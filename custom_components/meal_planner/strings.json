@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meal Planner einrichten",
+        "description": "Richtet das Meal Planner Dashboard ein. Nach der Einrichtung erscheint ein neuer Menüpunkt in der Seitenleiste."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Meal Planner ist bereits eingerichtet."
+    }
+  }
+}

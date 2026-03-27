@@ -1,0 +1,11 @@
+{
+  "domain": "meal_planner",
+  "name": "Meal Planner",
+  "version": "1.0.0",
+  "documentation": "https://github.com/HACucoo/meal-planner-ha",
+  "issue_tracker": "https://github.com/HACucoo/meal-planner-ha/issues",
+  "codeowners": ["@HACucoo"],
+  "requirements": [],
+  "iot_class": "local_push",
+  "config_flow": true
+}
