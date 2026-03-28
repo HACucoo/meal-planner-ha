@@ -65,6 +65,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerHistoryCSVView(hass))
     hass.http.register_view(MealPlannerChefkochView(hass))
 
+    # Set up sensor platform
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
     # Register sidebar panel
     async_register_built_in_panel(
         hass,
@@ -81,9 +84,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    await hass.config_entries.async_unload_platforms(entry, ["sensor"])
     async_remove_panel(hass, PANEL_URL)
     hass.data.pop(DOMAIN, None)
     return True
+
+
+def _push_sensor_update(hass: HomeAssistant) -> None:
+    """Trigger a state refresh on all meal plan sensors."""
+    for sensor in hass.data.get(DOMAIN, {}).get("sensors", []):
+        sensor.async_write_ha_state()
 
 
 def _default_data() -> dict:
@@ -290,6 +300,7 @@ class MealPlannerDayView(HomeAssistantView):
         # Clear rejection session for this day
         self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
         await self.hass.data[DOMAIN]["store"].async_save(data)
+        _push_sensor_update(self.hass)
         return self.json(entry, status_code=201)
 
     async def delete(self, request: web.Request, day: str) -> web.Response:
@@ -297,6 +308,7 @@ class MealPlannerDayView(HomeAssistantView):
         data["meal_plan"].pop(day, None)
         self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
         await self.hass.data[DOMAIN]["store"].async_save(data)
+        _push_sensor_update(self.hass)
         return self.json_message("deleted")
 
 
