@@ -119,7 +119,10 @@ def _get_suggestions(data: dict, day_str: str, session_rejected_ids: list[str]) 
     ]
     # Sort: never used first, then by last_used ascending
     dishes.sort(key=lambda d: (d["last_used"] is not None, d["last_used"] or ""))
-    return dishes[:3]
+    # Pick randomly from the oldest-used candidates for variety
+    pool = dishes[:max(3, min(10, len(dishes)))]
+    random.shuffle(pool)
+    return pool[:3]
 
 
 # ---------------------------------------------------------------------------
@@ -196,18 +199,29 @@ class MealPlannerPlanView(HomeAssistantView):
         self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
+        from_param = request.query.get("from")
+        to_param = request.query.get("to")
         week_param = request.query.get("week")
-        if week_param:
+
+        if from_param and to_param:
+            try:
+                start = date.fromisoformat(from_param)
+                end = date.fromisoformat(to_param)
+            except ValueError:
+                return self.json_message("invalid date format, use YYYY-MM-DD", status_code=400)
+            days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+        elif week_param:
             try:
                 year, week = week_param.split("-W")
                 monday = datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%u").date()
             except (ValueError, TypeError):
                 return self.json_message("invalid week format, use YYYY-WNN", status_code=400)
+            days = [monday + timedelta(days=i) for i in range(7)]
         else:
             today = date.today()
             monday = today - timedelta(days=today.weekday())
+            days = [monday + timedelta(days=i) for i in range(7)]
 
-        days = [monday + timedelta(days=i) for i in range(7)]
         data = self.hass.data[DOMAIN]["data"]
         result = {}
         for d in days:
@@ -478,16 +492,32 @@ class MealPlannerChefkochView(HomeAssistantView):
         if not results:
             return self.json_message("no recipes found", status_code=404)
 
-        meal = results[0]
-        title = meal.get("title") or meal.get("name") or ""
-        site_url = meal.get("siteUrl") or ""
+        raw = results[0]
+        # API may return the recipe directly or nested under a "recipe" key
+        meal = raw.get("recipe") or raw
+
+        title = (
+            meal.get("title")
+            or meal.get("name")
+            or meal.get("headline")
+            or ""
+        )
+        site_url = meal.get("siteUrl") or meal.get("url") or ""
 
         # Image: template has {size} and {formatId} placeholders
         img_template = meal.get("previewImageUrlTemplate") or meal.get("previewImageUrl") or ""
+        _LOGGER.debug("Chefkoch image template: %s", img_template)
         image = (
-            img_template.replace("{size}", "400x300").replace("{formatId}", "1")
+            img_template.replace("<format>", "crop-960x540")
             if img_template else None
         )
+
+        if not title:
+            _LOGGER.warning(
+                "Chefkoch: could not extract title. Available keys: %s",
+                list(meal.keys()),
+            )
+            return self.json_message("no recipe title found", status_code=404)
 
         return self.json({
             "name": title,

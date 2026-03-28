@@ -118,18 +118,14 @@
         <h1 class="text-xl font-bold text-white leading-tight">🍽️ Meal Planner</h1>
         <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="weekLabel"></p>
       </div>
-      <div class="flex gap-1.5 shrink-0">
-        <button class="btn btn-neutral px-3" @click="prevWeek">‹</button>
-        <button class="btn btn-neutral px-3" @click="goToday" x-text="S.today"></button>
-        <button class="btn btn-neutral px-3" @click="nextWeek">›</button>
-      </div>
+      <button class="btn btn-neutral px-3 shrink-0" @click="loadPlan" x-text="S.today"></button>
     </div>
 
     <!-- Week grid — 1 col on small, 3 col on medium+, 4 col on large -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+    <div class="grid grid-cols-2 sm:grid-cols-7 gap-2.5">
       <template x-for="day in weekDays" :key="day.iso">
         <div
-          class="day-card rounded-2xl px-3.5 py-3 flex flex-col gap-1"
+          class="day-card rounded-2xl px-3.5 py-4 flex flex-col gap-2"
           :class="dayCardClass(day)"
           @click="openDay(day)"
         >
@@ -146,9 +142,12 @@
           <!-- Meal status -->
           <template x-if="plan[day.iso]">
             <div>
-              <span class="tag" :class="typeTagClass(plan[day.iso].type)" x-text="typeLabel(plan[day.iso].type)"></span>
+              <span
+                x-show="!['dish','custom'].includes(plan[day.iso].type)"
+                class="tag" :class="typeTagClass(plan[day.iso].type)" x-text="typeLabel(plan[day.iso].type)"
+              ></span>
               <p
-                class="text-sm font-medium text-white mt-1 leading-tight line-clamp-2"
+                class="text-sm font-normal text-white mt-1 leading-tight line-clamp-2"
                 x-text="plan[day.iso].dish_name || ''"
                 x-show="plan[day.iso].dish_name"
               ></p>
@@ -562,7 +561,11 @@
     }
 
     function toISO(date) {
-      return date.toISOString().slice(0, 10);
+      // Use local date parts to avoid UTC-offset issues at midnight
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
     }
 
     // ── Alpine component ──────────────────────────────────────────────────────
@@ -572,7 +575,6 @@
         today: toISO(new Date()),
 
         // Week
-        monday: null,
         weekDays: [],
         plan: {},
         weekLabel: '',
@@ -602,64 +604,40 @@
 
         // ── Init ──
         async init() {
-          this.monday = getMonday(new Date());
-          await this.loadWeek();
+          await this.loadPlan();
         },
 
-        async loadWeek() {
+        async loadPlan() {
+          const today = new Date();
+          const todayISO = toISO(today);
           const days = [];
-          const todayISO = toISO(new Date());
-          for (let i = 0; i < 7; i++) {
-            const d = new Date(this.monday);
-            d.setDate(d.getDate() + i);
+          for (let i = -2; i <= 18; i++) {
+            const d = new Date(today);
+            d.setDate(today.getDate() + i);
             const iso = toISO(d);
+            const wi = (d.getDay() + 6) % 7; // 0=Mo … 6=So
             days.push({
               iso,
-              weekday: STRINGS.weekdays[i],
-              weekdayLong: STRINGS.weekdaysLong[i],
+              weekday: STRINGS.weekdays[wi],
+              weekdayLong: STRINGS.weekdaysLong[wi],
               dayNum: d.getDate(),
               month: STRINGS.months[d.getMonth()],
               isToday: iso === todayISO,
-              label: `${STRINGS.weekdaysLong[i]}, ${d.getDate()}. ${STRINGS.months[d.getMonth()]}`,
+              label: `${STRINGS.weekdaysLong[wi]}, ${d.getDate()}. ${STRINGS.months[d.getMonth()]}`,
             });
           }
           this.weekDays = days;
 
-          const kw = isoWeek(this.monday);
-          // ISO year = year of the Thursday of this week (may differ from monday.getFullYear()
-          // at year boundaries, e.g. Dec 29 is ISO week 1 of the next year)
-          const thu = new Date(this.monday);
-          thu.setDate(thu.getDate() + 3);
-          const isoYear = thu.getFullYear();
-          const year = this.monday.getFullYear();
-          const end = days[6];
-          this.weekLabel = `${STRINGS.kwPrefix} ${kw} · ${this.monday.getDate()}. ${STRINGS.months[this.monday.getMonth()]} – ${end.dayNum}. ${end.month} ${year}`;
+          const s = days[0], e = days[days.length - 1];
+          this.weekLabel = `${s.dayNum}. ${s.month} – ${e.dayNum}. ${e.month}`;
 
-          const weekParam = `${isoYear}-W${String(kw).padStart(2, '0')}`;
           try {
-            const resp = await fetch(`${API}/plan?week=${weekParam}`);
+            const resp = await fetch(`${API}/plan?from=${days[0].iso}&to=${days[days.length - 1].iso}`);
             this.plan = await resp.json();
-          } catch(e) {
-            console.error('Failed to load plan', e);
+          } catch(err) {
+            console.error('Failed to load plan', err);
             this.plan = {};
           }
-        },
-
-        prevWeek() {
-          const d = new Date(this.monday);
-          d.setDate(d.getDate() - 7);
-          this.monday = d;
-          this.loadWeek();
-        },
-        nextWeek() {
-          const d = new Date(this.monday);
-          d.setDate(d.getDate() + 7);
-          this.monday = d;
-          this.loadWeek();
-        },
-        goToday() {
-          this.monday = getMonday(new Date());
-          this.loadWeek();
         },
 
         // ── Day card styles ──
