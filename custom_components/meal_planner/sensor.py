@@ -24,9 +24,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Meal Planner sensors."""
-    entities: list[MealSensor] = [
+    entities: list[SensorEntity] = [
         MealSensor(hass, "today",    "Meal Planner Heute",   0),
         MealSensor(hass, "tomorrow", "Meal Planner Morgen",  1),
+        MealSummarysensor(hass),
     ]
     hass.data[DOMAIN]["sensors"] = entities
     async_add_entities(entities)
@@ -62,3 +63,34 @@ class MealSensor(SensorEntity):
         if dish_name:
             return dish_name
         return _TYPE_LABELS.get(entry.get("type", ""), _NOT_PLANNED)
+
+
+def _meal_label(data: dict, offset: int) -> str:
+    """Return the meal label for today+offset."""
+    target = (date.today() + timedelta(days=offset)).isoformat()
+    entry = data.get("meal_plan", {}).get(target)
+    if not entry:
+        return _NOT_PLANNED
+    dish_name = entry.get("dish_name", "")
+    if dish_name:
+        return dish_name
+    return _TYPE_LABELS.get(entry.get("type", ""), _NOT_PLANNED)
+
+
+class MealSummarysensor(SensorEntity):
+    """Single sensor with a full spoken summary: 'Heute gibt es X. Morgen gibt's Y.'"""
+
+    _attr_icon = "mdi:silverware-fork-knife"
+    _attr_should_poll = False
+    _attr_name = "Meal Planner Zusammenfassung"
+    _attr_unique_id = f"{DOMAIN}_summary"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    @property
+    def native_value(self) -> str:
+        data = self.hass.data.get(DOMAIN, {}).get("data", {})
+        today = _meal_label(data, 0)
+        tomorrow = _meal_label(data, 1)
+        return f"Heute gibt es {today}. Morgen gibt's {tomorrow}."
