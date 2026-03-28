@@ -68,6 +68,46 @@ Every dish stores a `last_used` date. The 10 dishes cooked longest ago (never-co
 
 ---
 
+## Sensors
+
+After setup, two text sensors are available:
+
+| Entity | Value |
+|---|---|
+| `sensor.meal_planner_heute` | Today's planned meal (dish name, or "Auswärts" / "Bestellen" / "Kein Kochen" / "Nicht geplant") |
+| `sensor.meal_planner_morgen` | Tomorrow's planned meal (same format) |
+
+These update instantly whenever a day is saved or cleared in the planner. Use them in automations, dashboards, or display cards.
+
+---
+
+## Lovelace List Card
+
+A compact 7-day list card is included — ideal for a portrait sidebar or a small dashboard tile.
+
+**1. Register the resource (once per dashboard)**
+
+Go to your dashboard → ⋮ menu → **Edit dashboard** → **Manage resources** → **Add resource**:
+
+| Field | Value |
+|---|---|
+| URL | `/meal_planner_frontend/meal-planner-card.js` |
+| Resource type | JavaScript module |
+
+**2. Add the card**
+
+In the card picker choose **Manual** and paste:
+
+```yaml
+type: custom:meal-planner-list-card
+title: Diese Woche   # optional heading
+lang: de             # optional: "de" or "en" (default: browser language)
+```
+
+The card shows **7 days**: yesterday · today (highlighted) · next 5 days, each with a weekday abbreviation and the planned meal. It refreshes automatically every 5 minutes.
+
+---
+
 ## Requirements
 
 - Home Assistant 2023.x or newer
