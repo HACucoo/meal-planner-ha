@@ -397,19 +397,31 @@ class MealPlannerHistoryCSVView(HomeAssistantView):
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
 
+    _TYPE_LABELS: dict[str, dict[str, str]] = {
+        "de": {
+            "dish": "Gekocht", "custom": "Gekocht",
+            "eating_out": "Auswärts", "order": "Bestellt", "nothing": "Kein Kochen",
+        },
+        "en": {
+            "dish": "Cooked", "custom": "Cooked",
+            "eating_out": "Eating out", "order": "Ordered", "nothing": "No cooking",
+        },
+    }
+    _CSV_HEADERS: dict[str, str] = {
+        "de": "Datum,Gericht,Typ",
+        "en": "Date,Dish,Type",
+    }
+
     async def get(self, request: web.Request) -> web.Response:
+        # Detect language from Accept-Language header (de or en, default de)
+        accept_lang = request.headers.get("Accept-Language", "de")
+        lang = "en" if accept_lang.lower().startswith("en") else "de"
+        type_labels = self._TYPE_LABELS[lang]
+
         data = self.hass.data[DOMAIN]["data"]
         meal_plan = data.get("meal_plan", {})
 
-        type_labels = {
-            "dish": "Gekocht",
-            "custom": "Gekocht",
-            "eating_out": "Auswärts",
-            "order": "Bestellt",
-            "nothing": "Kein Kochen",
-        }
-
-        rows = ["Datum,Gericht,Typ"]
+        rows = [self._CSV_HEADERS[lang]]
         for day_iso in sorted(meal_plan.keys()):
             entry = meal_plan[day_iso]
             dish_name = (entry.get("dish_name") or "").replace('"', '""')
@@ -483,6 +495,9 @@ class MealPlannerChefkochView(HomeAssistantView):
             async with session.get(
                 api_url, params=params, headers=self._HEADERS, timeout=10
             ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Chefkoch API status %s on offset fetch", resp.status)
+                    return self.json_message("chefkoch api error", status_code=502)
                 data = await resp.json(content_type=None)
         except Exception as exc:
             _LOGGER.warning("Chefkoch API fetch (offset) failed: %s", exc)

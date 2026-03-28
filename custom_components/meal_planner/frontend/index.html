@@ -118,7 +118,15 @@
         <h1 class="text-xl font-bold text-white leading-tight">🍽️ Meal Planner</h1>
         <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="weekLabel"></p>
       </div>
-      <button class="btn btn-neutral px-3 shrink-0" @click="loadPlan" x-text="S.today"></button>
+      <div class="flex gap-1.5 shrink-0">
+        <button class="btn btn-neutral px-3" @click="loadPlan" x-text="S.today"></button>
+        <button
+          class="btn btn-neutral px-2 text-xs font-mono"
+          @click="setLang(lang === 'de' ? 'en' : 'de')"
+          x-text="lang === 'de' ? 'EN' : 'DE'"
+          title="Switch language"
+        ></button>
+      </div>
     </div>
 
     <!-- Week grid — 1 col on small, 3 col on medium+, 4 col on large -->
@@ -178,7 +186,7 @@
       <div class="flex items-start justify-between mb-4">
         <div>
           <h2 class="text-lg font-bold text-white leading-tight" x-text="activeDay?.label"></h2>
-          <p class="text-gray-500 text-xs mt-0.5" x-text="activeDay?.iso"></p>
+          <p class="text-gray-500 text-xs mt-0.5" x-text="activeDay ? new Intl.DateTimeFormat(lang, {day:'numeric', month:'long', year:'numeric'}).format(new Date(activeDay.iso + 'T12:00')) : ''"></p>
         </div>
         <button class="text-gray-500 hover:text-white text-2xl leading-none ml-3 shrink-0" @click="closeModal">×</button>
       </div>
@@ -355,7 +363,7 @@
                   </div>
                   <div class="flex gap-2">
                     <button class="btn btn-success flex-1 text-sm" @click="acceptSurprise" x-text="S.accept + ' + ' + S.addToList"></button>
-                    <button class="btn btn-neutral text-sm" @click="surpriseMe">🎲</button>
+                    <button class="btn btn-neutral text-sm" @click="surpriseMe(surpriseSource)">🎲</button>
                     <button class="btn btn-danger text-sm" @click="surpriseResult = null">✕</button>
                   </div>
                 </div>
@@ -466,8 +474,7 @@
 
   <script>
     // ── i18n strings ─────────────────────────────────────────────────────────
-    // To add a language: copy this object, translate all values, then swap it in.
-    const STRINGS = {
+    const STRINGS_DE = {
       // Header
       today: 'Heute',
       notPlanned: 'Nicht geplant',
@@ -535,11 +542,100 @@
       bulkSave: 'Speichern',
       cancel: 'Abbrechen',
 
-      // Week
+      // Alerts & confirms
+      errorPrefix: 'Fehler: ',
+      errorNoRecipes: 'Keine Rezepte gefunden',
+      confirmDeleteAllDishes: 'Wirklich alle Gerichte löschen?',
+      confirmDeleteDish: 'Gericht wirklich löschen?',
+      dishAlreadyExists: 'Dieses Gericht existiert bereits.',
+
+      // Date & time
       weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
       weekdaysLong: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'],
       months: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
       kwPrefix: 'KW',
+    };
+
+    const STRINGS_EN = {
+      // Header
+      today: 'Today',
+      notPlanned: 'Not planned',
+      manageDishes: 'Manage dish list',
+      downloadHistory: 'History as CSV',
+
+      // Modal: planned state
+      currentlyPlanned: 'Currently planned',
+      change: 'Change',
+      delete: 'Delete',
+
+      // Suggestions
+      suggestionsLabel: 'Suggestions (least recently cooked)',
+      loadingSuggestions: 'Loading suggestions…',
+      noMoreSuggestions: 'No more suggestions – please use the custom entry.',
+      lastCooked: 'Last:',
+      neverCooked: 'Never cooked',
+
+      // Suggestion buttons
+      accept: 'Take',
+      acceptTitle: 'Plan for this day',
+      notToday: 'Not today',
+      notTodayTitle: 'Skip suggestion (not today, will come back soon)',
+      block: '2 weeks not',
+      blockTitle: 'Do not suggest this dish for 2 weeks',
+
+      // Quick select
+      quickSelect: 'Quick select',
+      nothing: 'No cooking',
+      eatingOut: 'Eating out',
+      order: 'Order',
+
+      // Surprise
+      surpriseMe: 'Surprise me!',
+      surpriseLoading: 'Loading recipe…',
+      viewRecipe: 'View recipe →',
+
+      // Free text
+      ownEntry: 'Custom entry',
+      ownEntryPlaceholder: 'Enter dish name…',
+      dishPickerPlaceholder: 'Choose from list…',
+      addToListLabel: 'Add to dish list',
+      addToList: 'to list',
+      save: 'Save',
+
+      // Type labels
+      type_dish: 'Cooking',
+      type_custom: 'Cooking',
+      type_eating_out: 'Eating out',
+      type_order: 'Order',
+      type_nothing: 'No cooking',
+
+      // Dish manager
+      dishManagerTitle: 'Dish list',
+      newDishPlaceholder: 'New dish…',
+      add: '+ Add',
+      noDishes: 'No dishes yet.',
+      deleteDish: 'Delete dish',
+      blockedUntil: 'Blocked until:',
+      unblock: 'Unblock',
+      tabList: 'List',
+      tabBulk: 'Bulk edit',
+      bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved.',
+      bulkPlaceholder: 'Spaghetti Bolognese\nChicken Curry\n…',
+      bulkSave: 'Save',
+      cancel: 'Cancel',
+
+      // Alerts & confirms
+      errorPrefix: 'Error: ',
+      errorNoRecipes: 'No recipes found',
+      confirmDeleteAllDishes: 'Really delete all dishes?',
+      confirmDeleteDish: 'Really delete this dish?',
+      dishAlreadyExists: 'This dish already exists.',
+
+      // Date & time
+      weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      weekdaysLong: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+      months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      kwPrefix: 'W',
     };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -571,7 +667,9 @@
     // ── Alpine component ──────────────────────────────────────────────────────
     function mealPlanner() {
       return {
-        S: STRINGS,
+        lang: (navigator.language || 'de').startsWith('de') ? 'de' : 'en',
+        get S() { return this.lang === 'de' ? STRINGS_DE : STRINGS_EN; },
+        setLang(l) { this.lang = l; this.loadPlan(); },
         today: toISO(new Date()),
 
         // Week
@@ -589,6 +687,7 @@
 
         // Surprise
         surpriseResult: null,
+        surpriseSource: 'themealdb',
         surpriseLoading: false,
 
         // Custom input
@@ -618,12 +717,12 @@
             const wi = (d.getDay() + 6) % 7; // 0=Mo … 6=So
             days.push({
               iso,
-              weekday: STRINGS.weekdays[wi],
-              weekdayLong: STRINGS.weekdaysLong[wi],
+              weekday: this.S.weekdays[wi],
+              weekdayLong: this.S.weekdaysLong[wi],
               dayNum: d.getDate(),
-              month: STRINGS.months[d.getMonth()],
+              month: this.S.months[d.getMonth()],
               isToday: iso === todayISO,
-              label: `${STRINGS.weekdaysLong[wi]}, ${d.getDate()}. ${STRINGS.months[d.getMonth()]}`,
+              label: `${this.S.weekdaysLong[wi]}, ${d.getDate()}. ${this.S.months[d.getMonth()]}`,
             });
           }
           this.weekDays = days;
@@ -664,7 +763,7 @@
           return map[type] || 'bg-gray-700 text-gray-400';
         },
         typeLabel(type) {
-          return STRINGS[`type_${type}`] || type;
+          return this.S[`type_${type}`] || type;
         },
         formatDate(iso) {
           if (!iso) return '';
@@ -763,7 +862,7 @@
             this.closeModal();
             this.advanceToNextUnplanned();
           } catch(e) {
-            alert('Fehler: ' + e.message);
+            alert(this.S.errorPrefix + e.message);
           }
         },
 
@@ -772,13 +871,15 @@
           const after  = this.weekDays.slice(currentIdx + 1).find(d => !this.plan[d.iso]);
           const before = this.weekDays.slice(0, currentIdx).find(d => !this.plan[d.iso]);
           const next = after || before;
-          if (next) setTimeout(() => this.openDay(next), 220);
+          if (next) setTimeout(() => { if (!this.modalOpen) this.openDay(next); }, 220);
         },
 
         async clearDay(iso) {
           try {
             await fetch(`${API}/plan/${iso}`, { method: 'DELETE' });
-            delete this.plan[iso];
+            const updated = { ...this.plan };
+            delete updated[iso];
+            this.plan = updated;
             this.closeModal();
           } catch(e) {
             console.error('Clear failed', e);
@@ -787,12 +888,13 @@
 
         // ── Surprise me ──
         async surpriseMe(source = 'themealdb') {
+          this.surpriseSource = source;
           this.surpriseLoading = true;
           this.surpriseResult = null;
           try {
             if (source === 'chefkoch') {
               const resp = await fetch('/api/meal_planner/surprise/chefkoch');
-              if (!resp.ok) throw new Error('Keine Rezepte gefunden');
+              if (!resp.ok) throw new Error(this.S.errorNoRecipes);
               const meal = await resp.json();
               this.surpriseResult = {
                 name: meal.name,
@@ -816,7 +918,7 @@
               }
             }
           } catch(e) {
-            alert('Keine Rezepte gefunden: ' + e.message);
+            alert(this.S.errorNoRecipes + ': ' + e.message);
           } finally {
             this.surpriseLoading = false;
           }
@@ -838,7 +940,7 @@
             .map(l => l.trim())
             .filter(l => l.length > 0);
 
-          if (newNames.length === 0 && !confirm('Wirklich alle Gerichte löschen?')) return;
+          if (newNames.length === 0 && !confirm(this.S.confirmDeleteAllDishes)) return;
 
           const existing = new Map(this.allDishes.map(d => [d.name.toLowerCase(), d]));
           const incoming = new Set(newNames.map(n => n.toLowerCase()));
@@ -880,16 +982,16 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name }),
             });
-            if (resp.status === 409) { alert('Dieses Gericht existiert bereits.'); return; }
+            if (resp.status === 409) { alert(this.S.dishAlreadyExists); return; }
             if (!resp.ok) throw new Error(await resp.text());
             this.newDishName = '';
             await this.loadDishes();
           } catch(e) {
-            alert('Fehler: ' + e.message);
+            alert(this.S.errorPrefix + e.message);
           }
         },
         async deleteDish(id) {
-          if (!confirm('Gericht wirklich löschen?')) return;
+          if (!confirm(this.S.confirmDeleteDish)) return;
           try {
             await fetch(`${API}/dishes/${id}`, { method: 'DELETE' });
             await this.loadDishes();
