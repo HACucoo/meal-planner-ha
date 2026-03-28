@@ -2,7 +2,7 @@
 
 A HACS integration that adds a touch-friendly dinner planner to your Home Assistant sidebar — perfect for a family dashboard on a tablet or wall display.
 
-![Meal Planner Screenshot](https://raw.githubusercontent.com/HACucoo/meal-planner-ha/main/screenshot.png)
+<img width="938" height="1032" alt="image" src="https://github.com/user-attachments/assets/d4b5da35-7e66-4d43-b533-090f1d73ca01" />
 
 ## Features
 
