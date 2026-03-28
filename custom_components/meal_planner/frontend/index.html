@@ -161,9 +161,11 @@
       </template>
     </div>
 
-    <!-- Footer link -->
-    <div class="mt-5 text-center">
+    <!-- Footer links -->
+    <div class="mt-5 text-center flex items-center justify-center gap-4">
       <button class="text-gray-600 text-xs hover:text-gray-400 underline" @click="openDishManager()" x-text="S.manageDishes"></button>
+      <span class="text-gray-700 text-xs">·</span>
+      <a class="text-gray-600 text-xs hover:text-gray-400 underline" href="/api/meal_planner/history.csv" download="meal-history.csv" x-text="S.downloadHistory"></a>
     </div>
   </div>
 
@@ -260,6 +262,37 @@
                 <p class="text-gray-500 italic text-sm py-2 text-center" x-text="S.noMoreSuggestions"></p>
               </template>
 
+              <!-- Custom entry + dish picker -->
+              <p class="section-label" x-text="S.ownEntry"></p>
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  x-model="customText"
+                  :placeholder="S.ownEntryPlaceholder"
+                  class="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+                  @keydown.enter="customText.trim() && saveCustom()"
+                />
+                <select
+                  class="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-blue-500 text-sm"
+                  @change="if ($event.target.value) { customText = $event.target.value; $event.target.selectedIndex = 0; }"
+                >
+                  <option value="" x-text="S.dishPickerPlaceholder"></option>
+                  <template x-for="dish in sortedDishes()" :key="dish.id">
+                    <option :value="dish.name" x-text="dish.name"></option>
+                  </template>
+                </select>
+              </div>
+              <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="checkbox" x-model="addToList" class="w-4 h-4 rounded accent-blue-500" />
+                <span class="text-xs text-gray-400" x-text="S.addToListLabel"></span>
+              </label>
+              <button
+                class="btn btn-primary w-full mb-3"
+                :disabled="!customText.trim()"
+                @click="saveCustom()"
+                x-text="S.save"
+              ></button>
+
               <div class="divider"></div>
 
               <!-- Quick-select -->
@@ -280,14 +313,24 @@
               </div>
 
               <!-- Surprise me -->
-              <button
-                class="btn btn-violet w-full mb-3 flex items-center justify-center gap-2"
-                @click="surpriseMe"
-                :disabled="surpriseLoading"
-              >
-                <span x-show="!surpriseLoading">🎲 <span x-text="S.surpriseMe"></span></span>
-                <span x-show="surpriseLoading">⏳ <span x-text="S.surpriseLoading"></span></span>
-              </button>
+              <div class="flex gap-2 mb-3">
+                <button
+                  class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
+                  @click="surpriseMe('themealdb')"
+                  :disabled="surpriseLoading"
+                >
+                  <span x-show="!surpriseLoading">🎲 <span x-text="S.surpriseMe"></span></span>
+                  <span x-show="surpriseLoading">⏳</span>
+                </button>
+                <button
+                  class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
+                  @click="surpriseMe('chefkoch')"
+                  :disabled="surpriseLoading"
+                >
+                  <span x-show="!surpriseLoading">👨‍🍳 Chefkoch</span>
+                  <span x-show="surpriseLoading">⏳</span>
+                </button>
+              </div>
 
               <!-- Surprise result -->
               <template x-if="surpriseResult">
@@ -302,6 +345,13 @@
                     <div class="min-w-0">
                       <p class="font-semibold text-white text-sm" x-text="surpriseResult.name"></p>
                       <p class="text-xs text-gray-400" x-text="surpriseResult.category + (surpriseResult.area ? ' · ' + surpriseResult.area : '')"></p>
+                      <a
+                        x-show="surpriseResult.url"
+                        :href="surpriseResult.url"
+                        target="_blank"
+                        class="text-xs text-blue-400 hover:underline"
+                        x-text="S.viewRecipe"
+                      ></a>
                     </div>
                   </div>
                   <div class="flex gap-2">
@@ -311,28 +361,6 @@
                   </div>
                 </div>
               </template>
-
-              <div class="divider"></div>
-
-              <!-- Free text -->
-              <p class="section-label" x-text="S.ownEntry"></p>
-              <input
-                type="text"
-                x-model="customText"
-                :placeholder="S.ownEntryPlaceholder"
-                class="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm mb-2"
-                @keydown.enter="customText.trim() && saveCustom()"
-              />
-              <label class="flex items-center gap-2 mb-3 cursor-pointer">
-                <input type="checkbox" x-model="addToList" class="w-4 h-4 rounded accent-blue-500" />
-                <span class="text-xs text-gray-400" x-text="S.addToListLabel"></span>
-              </label>
-              <button
-                class="btn btn-primary w-full"
-                :disabled="!customText.trim()"
-                @click="saveCustom()"
-                x-text="S.save"
-              ></button>
 
             </div>
           </template>
@@ -352,50 +380,88 @@
         <button class="text-gray-500 hover:text-white text-2xl leading-none" @click="showDishManager = false">×</button>
       </div>
 
-      <!-- Add -->
-      <div class="flex gap-2 mb-4">
-        <input
-          type="text"
-          x-model="newDishName"
-          :placeholder="S.newDishPlaceholder"
-          class="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
-          @keydown.enter="addDish()"
-        />
-        <button class="btn btn-success shrink-0" @click="addDish()" x-text="S.add"></button>
+      <!-- Tab switcher -->
+      <div class="flex gap-1 mb-4 bg-gray-900 rounded-xl p-1">
+        <button
+          class="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+          :class="dishManagerTab === 'list' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'"
+          @click="dishManagerTab = 'list'"
+          x-text="S.tabList"
+        ></button>
+        <button
+          class="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+          :class="dishManagerTab === 'bulk' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'"
+          @click="openBulkEdit()"
+          x-text="S.tabBulk"
+        ></button>
       </div>
 
-      <!-- List -->
-      <div class="max-h-[60vh] overflow-y-auto space-y-1 pr-1">
-        <template x-for="dish in allDishes" :key="dish.id">
-          <div class="flex items-center gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
-            <div class="flex-1 min-w-0">
-              <p class="font-medium text-white text-sm truncate" x-text="dish.name"></p>
-              <p class="text-xs text-gray-500"
-                x-text="dish.blocked_until && dish.blocked_until > today
-                  ? S.blockedUntil + ' ' + formatDate(dish.blocked_until)
-                  : dish.last_used
-                    ? S.lastCooked + ' ' + formatDate(dish.last_used) + ' · ' + dish.use_count + '×'
-                    : S.neverCooked"
-              ></p>
-            </div>
-            <!-- Unblock button if temporarily blocked -->
-            <button
-              x-show="dish.blocked_until && dish.blocked_until > today"
-              class="btn btn-neutral text-xs px-2 py-1 shrink-0"
-              @click="unblockDish(dish)"
-              x-text="S.unblock"
-            ></button>
-            <button
-              class="text-gray-600 hover:text-red-400 transition-colors text-base shrink-0 ml-1"
-              @click="deleteDish(dish.id)"
-              :title="S.deleteDish"
-            >✕</button>
+      <!-- ── Tab: List view ── -->
+      <template x-if="dishManagerTab === 'list'">
+        <div>
+          <!-- Add single -->
+          <div class="flex gap-2 mb-4">
+            <input
+              type="text"
+              x-model="newDishName"
+              :placeholder="S.newDishPlaceholder"
+              class="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+              @keydown.enter="addDish()"
+            />
+            <button class="btn btn-success shrink-0" @click="addDish()" x-text="S.add"></button>
           </div>
-        </template>
-        <template x-if="allDishes.length === 0">
-          <p class="text-gray-500 italic text-sm text-center py-6" x-text="S.noDishes"></p>
-        </template>
-      </div>
+
+          <!-- Dish list -->
+          <div class="max-h-[55vh] overflow-y-auto space-y-1 pr-1">
+            <template x-for="dish in allDishes" :key="dish.id">
+              <div class="flex items-center gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-white text-sm truncate" x-text="dish.name"></p>
+                  <p class="text-xs text-gray-500"
+                    x-text="dish.blocked_until && dish.blocked_until > today
+                      ? S.blockedUntil + ' ' + formatDate(dish.blocked_until)
+                      : dish.last_used
+                        ? S.lastCooked + ' ' + formatDate(dish.last_used) + ' · ' + dish.use_count + '×'
+                        : S.neverCooked"
+                  ></p>
+                </div>
+                <button
+                  x-show="dish.blocked_until && dish.blocked_until > today"
+                  class="btn btn-neutral text-xs px-2 py-1 shrink-0"
+                  @click="unblockDish(dish)"
+                  x-text="S.unblock"
+                ></button>
+                <button
+                  class="text-gray-600 hover:text-red-400 transition-colors text-base shrink-0 ml-1"
+                  @click="deleteDish(dish.id)"
+                  :title="S.deleteDish"
+                >✕</button>
+              </div>
+            </template>
+            <template x-if="allDishes.length === 0">
+              <p class="text-gray-500 italic text-sm text-center py-6" x-text="S.noDishes"></p>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- ── Tab: Bulk edit ── -->
+      <template x-if="dishManagerTab === 'bulk'">
+        <div>
+          <p class="text-xs text-gray-500 mb-2" x-text="S.bulkHint"></p>
+          <textarea
+            x-model="bulkText"
+            class="w-full bg-gray-800 border border-gray-600 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm font-mono resize-none"
+            rows="16"
+            :placeholder="S.bulkPlaceholder"
+          ></textarea>
+          <div class="flex gap-2 mt-3">
+            <button class="btn btn-primary flex-1" @click="saveBulk()" x-text="S.bulkSave"></button>
+            <button class="btn btn-neutral" @click="dishManagerTab = 'list'" x-text="S.cancel"></button>
+          </div>
+        </div>
+      </template>
+
     </div>
   </div>
 
@@ -407,6 +473,7 @@
       today: 'Heute',
       notPlanned: 'Nicht geplant',
       manageDishes: 'Gerichtliste verwalten',
+      downloadHistory: 'Historie als CSV',
 
       // Modal: planned state
       currentlyPlanned: 'Aktuell geplant',
@@ -437,10 +504,12 @@
       // Surprise
       surpriseMe: 'Überrasch mich!',
       surpriseLoading: 'Lade Rezept…',
+      viewRecipe: 'Rezept ansehen →',
 
       // Free text
       ownEntry: 'Eigener Eintrag',
       ownEntryPlaceholder: 'Gerichtname eingeben…',
+      dishPickerPlaceholder: 'Aus Liste wählen…',
       addToListLabel: 'In Gerichtliste aufnehmen',
       addToList: 'in Liste',
       save: 'Speichern',
@@ -460,6 +529,12 @@
       deleteDish: 'Gericht löschen',
       blockedUntil: 'Gesperrt bis:',
       unblock: 'Freigeben',
+      tabList: 'Liste',
+      tabBulk: 'Massenbearbeitung',
+      bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten.',
+      bulkPlaceholder: 'Spaghetti Bolognese\nHähnchen-Curry\n…',
+      bulkSave: 'Speichern',
+      cancel: 'Abbrechen',
 
       // Week
       weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
@@ -522,6 +597,8 @@
         showDishManager: false,
         allDishes: [],
         newDishName: '',
+        dishManagerTab: 'list',
+        bulkText: '',
 
         // ── Init ──
         async init() {
@@ -549,11 +626,16 @@
           this.weekDays = days;
 
           const kw = isoWeek(this.monday);
+          // ISO year = year of the Thursday of this week (may differ from monday.getFullYear()
+          // at year boundaries, e.g. Dec 29 is ISO week 1 of the next year)
+          const thu = new Date(this.monday);
+          thu.setDate(thu.getDate() + 3);
+          const isoYear = thu.getFullYear();
           const year = this.monday.getFullYear();
           const end = days[6];
           this.weekLabel = `${STRINGS.kwPrefix} ${kw} · ${this.monday.getDate()}. ${STRINGS.months[this.monday.getMonth()]} – ${end.dayNum}. ${end.month} ${year}`;
 
-          const weekParam = `${year}-W${String(kw).padStart(2, '0')}`;
+          const weekParam = `${isoYear}-W${String(kw).padStart(2, '0')}`;
           try {
             const resp = await fetch(`${API}/plan?week=${weekParam}`);
             this.plan = await resp.json();
@@ -613,6 +695,10 @@
         },
 
         // ── Modal ──
+        sortedDishes() {
+          return this.allDishes.slice().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+        },
+
         async openDay(day) {
           this.activeDay = day;
           this.editMode = false;
@@ -621,6 +707,7 @@
           this.surpriseResult = null;
           this.suggestions = [];
           this.modalOpen = true;
+          this.loadDishes();
           if (!this.plan[day.iso]) {
             await this.loadSuggestions();
           }
@@ -634,6 +721,7 @@
           this.editMode = true;
           this.customText = '';
           this.surpriseResult = null;
+          this.loadDishes();
           await this.loadSuggestions();
         },
 
@@ -702,7 +790,10 @@
         },
 
         advanceToNextUnplanned() {
-          const next = this.weekDays.find(d => !this.plan[d.iso]);
+          const currentIdx = this.weekDays.findIndex(d => d.iso === this.activeDay?.iso);
+          const after  = this.weekDays.slice(currentIdx + 1).find(d => !this.plan[d.iso]);
+          const before = this.weekDays.slice(0, currentIdx).find(d => !this.plan[d.iso]);
+          const next = after || before;
           if (next) setTimeout(() => this.openDay(next), 220);
         },
 
@@ -716,24 +807,38 @@
           }
         },
 
-        // ── Surprise me (TheMealDB) ──
-        async surpriseMe() {
+        // ── Surprise me ──
+        async surpriseMe(source = 'themealdb') {
           this.surpriseLoading = true;
           this.surpriseResult = null;
           try {
-            const resp = await fetch('https://www.themealdb.com/api/json/v1/1/random.php');
-            const data = await resp.json();
-            const meal = data?.meals?.[0];
-            if (meal) {
+            if (source === 'chefkoch') {
+              const resp = await fetch('/api/meal_planner/surprise/chefkoch');
+              if (!resp.ok) throw new Error('Keine Rezepte gefunden');
+              const meal = await resp.json();
               this.surpriseResult = {
-                name: meal.strMeal,
-                thumb: meal.strMealThumb,
-                category: meal.strCategory || '',
-                area: meal.strArea || '',
+                name: meal.name,
+                thumb: meal.image || null,
+                category: 'Chefkoch',
+                area: '',
+                url: meal.url || null,
               };
+            } else {
+              const resp = await fetch('https://www.themealdb.com/api/json/v1/1/random.php');
+              const data = await resp.json();
+              const meal = data?.meals?.[0];
+              if (meal) {
+                this.surpriseResult = {
+                  name: meal.strMeal,
+                  thumb: meal.strMealThumb,
+                  category: meal.strCategory || '',
+                  area: meal.strArea || '',
+                  url: null,
+                };
+              }
             }
           } catch(e) {
-            alert('TheMealDB nicht erreichbar. Bitte Internetverbindung prüfen.');
+            alert('Keine Rezepte gefunden: ' + e.message);
           } finally {
             this.surpriseLoading = false;
           }
@@ -742,7 +847,43 @@
         // ── Dish manager ──
         async openDishManager() {
           this.showDishManager = true;
+          this.dishManagerTab = 'list';
           await this.loadDishes();
+        },
+        openBulkEdit() {
+          this.bulkText = this.allDishes.map(d => d.name).join('\n');
+          this.dishManagerTab = 'bulk';
+        },
+        async saveBulk() {
+          const newNames = this.bulkText
+            .split('\n')
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+
+          if (newNames.length === 0 && !confirm('Wirklich alle Gerichte löschen?')) return;
+
+          const existing = new Map(this.allDishes.map(d => [d.name.toLowerCase(), d]));
+          const incoming = new Set(newNames.map(n => n.toLowerCase()));
+
+          // Add new
+          for (const name of newNames) {
+            if (!existing.has(name.toLowerCase())) {
+              await fetch(`${API}/dishes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+              });
+            }
+          }
+          // Remove deleted
+          for (const [key, dish] of existing) {
+            if (!incoming.has(key)) {
+              await fetch(`${API}/dishes/${dish.id}`, { method: 'DELETE' });
+            }
+          }
+
+          await this.loadDishes();
+          this.dishManagerTab = 'list';
         },
         async loadDishes() {
           try {

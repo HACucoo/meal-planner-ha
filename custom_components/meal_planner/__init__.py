@@ -7,8 +7,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import json as _json
+import random
+import re
+
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.frontend import async_register_built_in_panel, async_remove_panel
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -44,11 +50,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["rejected_sessions"] = {}
 
     # Serve static frontend files
-    hass.http.register_static_path(
-        f"/{DOMAIN}_frontend",
-        str(FRONTEND_DIR),
-        cache_headers=False,
-    )
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(f"/{DOMAIN}_frontend", str(FRONTEND_DIR), cache_headers=False)
+    ])
 
     # Register API views
     hass.http.register_view(MealPlannerDishesView(hass))
@@ -58,14 +62,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerSuggestView(hass))
     hass.http.register_view(MealPlannerRejectView(hass))
     hass.http.register_view(MealPlannerUnblockView(hass))
+    hass.http.register_view(MealPlannerHistoryCSVView(hass))
+    hass.http.register_view(MealPlannerChefkochView(hass))
 
     # Register sidebar panel
-    hass.components.frontend.async_register_built_in_panel(
-        "iframe",
-        PANEL_TITLE,
-        PANEL_ICON,
-        PANEL_URL,
-        {"url": f"/{DOMAIN}_frontend/index.html"},
+    async_register_built_in_panel(
+        hass,
+        component_name="iframe",
+        sidebar_title=PANEL_TITLE,
+        sidebar_icon=PANEL_ICON,
+        frontend_url_path=PANEL_URL,
+        config={"url": f"/{DOMAIN}_frontend/index.html"},
         require_admin=False,
     )
 
@@ -74,7 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    hass.components.frontend.async_remove_panel(PANEL_URL)
+    async_remove_panel(hass, PANEL_URL)
     hass.data.pop(DOMAIN, None)
     return True
 
@@ -193,7 +200,7 @@ class MealPlannerPlanView(HomeAssistantView):
         if week_param:
             try:
                 year, week = week_param.split("-W")
-                monday = datetime.strptime(f"{year}-W{week}-1", "%Y-W%W-%w").date()
+                monday = datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%u").date()
             except (ValueError, TypeError):
                 return self.json_message("invalid week format, use YYYY-WNN", status_code=400)
         else:
@@ -364,3 +371,127 @@ class MealPlannerUnblockView(HomeAssistantView):
         dish["blocked_until"] = None
         await self.hass.data[DOMAIN]["store"].async_save(data)
         return self.json(dish)
+
+
+class MealPlannerHistoryCSVView(HomeAssistantView):
+    """GET /api/meal_planner/history.csv  – download full meal history as CSV."""
+
+    url = "/api/meal_planner/history.csv"
+    name = "api:meal_planner:history_csv"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        data = self.hass.data[DOMAIN]["data"]
+        meal_plan = data.get("meal_plan", {})
+
+        type_labels = {
+            "dish": "Gekocht",
+            "custom": "Gekocht",
+            "eating_out": "Auswärts",
+            "order": "Bestellt",
+            "nothing": "Kein Kochen",
+        }
+
+        rows = ["Datum,Gericht,Typ"]
+        for day_iso in sorted(meal_plan.keys()):
+            entry = meal_plan[day_iso]
+            dish_name = (entry.get("dish_name") or "").replace('"', '""')
+            typ = type_labels.get(entry.get("type", ""), entry.get("type", ""))
+            rows.append(f'{day_iso},"{dish_name}",{typ}')
+
+        csv_content = "\n".join(rows) + "\n"
+        return web.Response(
+            body=csv_content.encode("utf-8-sig"),  # utf-8-sig for Excel compatibility
+            content_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=meal-history.csv"},
+        )
+
+
+class MealPlannerChefkochView(HomeAssistantView):
+    """GET /api/meal_planner/surprise/chefkoch  – random recipe via Chefkoch JSON API."""
+
+    url = "/api/meal_planner/surprise/chefkoch"
+    name = "api:meal_planner:surprise_chefkoch"
+    requires_auth = False
+
+    # Rotating search terms for variety
+    _QUERIES = [
+        "Abendessen", "Pasta", "Suppe", "Auflauf", "Pfanne",
+        "Salat", "Eintopf", "Ofengericht", "Curry", "Fleisch",
+        "vegetarisch", "Fisch", "Hähnchen", "Rind", "Gemüse",
+    ]
+
+    _HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+        "Accept-Language": "de-DE,de;q=0.9",
+        "Referer": "https://www.chefkoch.de/",
+    }
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        session = async_get_clientsession(self.hass)
+        query = random.choice(self._QUERIES)
+
+        # Step 1: get total count for this query with a minimal request
+        api_url = "https://api.chefkoch.de/v2/recipes"
+        params = {"query": query, "limit": 1, "offset": 0}
+        try:
+            async with session.get(
+                api_url, params=params, headers=self._HEADERS, timeout=10
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Chefkoch API status %s for query '%s'", resp.status, query)
+                    return self.json_message("chefkoch api error", status_code=502)
+                data = await resp.json(content_type=None)
+        except Exception as exc:
+            _LOGGER.warning("Chefkoch API fetch failed: %s", exc)
+            return self.json_message("chefkoch unreachable", status_code=502)
+
+        total = data.get("count", 0)
+        if not total:
+            _LOGGER.warning("Chefkoch: no results for query '%s'", query)
+            return self.json_message("no recipes found", status_code=404)
+
+        # Step 2: pick a random recipe within the first 200 results
+        offset = random.randint(0, min(total - 1, 199))
+        params = {"query": query, "limit": 1, "offset": offset}
+        try:
+            async with session.get(
+                api_url, params=params, headers=self._HEADERS, timeout=10
+            ) as resp:
+                data = await resp.json(content_type=None)
+        except Exception as exc:
+            _LOGGER.warning("Chefkoch API fetch (offset) failed: %s", exc)
+            return self.json_message("chefkoch unreachable", status_code=502)
+
+        results = data.get("results") or []
+        if not results:
+            return self.json_message("no recipes found", status_code=404)
+
+        meal = results[0]
+        title = meal.get("title") or meal.get("name") or ""
+        site_url = meal.get("siteUrl") or ""
+
+        # Image: template has {size} and {formatId} placeholders
+        img_template = meal.get("previewImageUrlTemplate") or meal.get("previewImageUrl") or ""
+        image = (
+            img_template.replace("{size}", "400x300").replace("{formatId}", "1")
+            if img_template else None
+        )
+
+        return self.json({
+            "name": title,
+            "image": image,
+            "url": site_url,
+            "source": "Chefkoch",
+        })
