@@ -42,6 +42,10 @@ DEFAULT_DISHES = [
     "Lachsfilet mit Reis",
     "Chicken Tikka Masala",
     "Burritos",
+    "Drahde Wixpfeiferl",
+    "Boeuf a la boeuf",
+    "Schwammerlbrühe",
+    "Pizzaleberkas",
 ]
 
 # Day plan types
