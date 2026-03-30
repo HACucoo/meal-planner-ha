@@ -17,6 +17,7 @@ from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 
 from .const import (
@@ -68,6 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
+    # Refresh sensors at midnight so "today" flips correctly without a restart
+    async def _midnight_refresh(_now: datetime) -> None:
+        _push_sensor_update(hass)
+
+    hass.data[DOMAIN]["cancel_midnight"] = async_track_time_change(
+        hass, _midnight_refresh, hour=0, minute=0, second=30
+    )
+
     # Register sidebar panel
     async_register_built_in_panel(
         hass,
@@ -84,6 +93,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    if cancel := hass.data.get(DOMAIN, {}).get("cancel_midnight"):
+        cancel()
     await hass.config_entries.async_unload_platforms(entry, ["sensor"])
     async_remove_panel(hass, PANEL_URL)
     hass.data.pop(DOMAIN, None)
