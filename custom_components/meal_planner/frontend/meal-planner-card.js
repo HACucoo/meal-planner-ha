@@ -137,9 +137,6 @@ class MealPlannerListCard extends HTMLElement {
         .meal {
           font-size: 0.875rem;
           color: var(--primary-text-color);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
         .today .wd  { color: var(--primary-color); }
         .today .meal { color: var(--primary-color); font-weight: 600; }
