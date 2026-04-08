@@ -49,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["store"] = store
     hass.data[DOMAIN]["data"] = data
     hass.data[DOMAIN]["rejected_sessions"] = {}
+    hass.data[DOMAIN]["entry"] = entry
 
     # Serve static frontend files
     await hass.http.async_register_static_paths([
@@ -65,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerUnblockView(hass))
     hass.http.register_view(MealPlannerHistoryCSVView(hass))
     hass.http.register_view(MealPlannerChefkochView(hass))
+    hass.http.register_view(MealPlannerSettingsView(hass))
 
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
@@ -563,3 +565,19 @@ class MealPlannerChefkochView(HomeAssistantView):
             "url": site_url,
             "source": "Chefkoch",
         })
+
+
+class MealPlannerSettingsView(HomeAssistantView):
+    """Return integration options (e.g. language) to the frontend."""
+
+    url = "/api/meal_planner/settings"
+    name = "api:meal_planner:settings"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        entry: ConfigEntry = self.hass.data.get(DOMAIN, {}).get("entry")
+        lang = entry.options.get("lang", "de") if entry else "de"
+        return self.json({"lang": lang})
