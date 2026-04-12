@@ -611,7 +611,7 @@ class MealPlannerSettingsView(HomeAssistantView):
 
     url = "/api/meal_planner/settings"
     name = "api:meal_planner:settings"
-    requires_auth = True
+    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -627,7 +627,7 @@ class MealPlannerStatsView(HomeAssistantView):
 
     url = "/api/meal_planner/stats"
     name = "api:meal_planner:stats"
-    requires_auth = True
+    requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
