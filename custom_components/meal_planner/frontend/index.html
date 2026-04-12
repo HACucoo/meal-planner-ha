@@ -796,8 +796,12 @@
       return {
         lang: (navigator.language || 'de').startsWith('de') ? 'de' : 'en',
         get S() { return this.lang === 'de' ? STRINGS_DE : STRINGS_EN; },
-        setLang(l) { this.lang = l; this.loadPlan(); },
-        today: toISO(new Date()),
+        setLang(l) {
+          this.lang = l;
+          document.documentElement.lang = l;
+          this.loadPlan();
+        },
+        get today() { return toISO(new Date()); },
 
         // Week
         weekDays: [],
@@ -839,7 +843,10 @@
             const resp = await fetch('/api/meal_planner/settings');
             if (resp.ok) {
               const s = await resp.json();
-              if (s.lang) this.lang = s.lang;
+              if (s.lang) {
+                this.lang = s.lang;
+                document.documentElement.lang = s.lang;
+              }
             }
           } catch(e) { /* keep browser default */ }
           await this.loadPlan();
@@ -926,7 +933,7 @@
 
         // ── Modal ──
         sortedDishes() {
-          return this.allDishes.slice().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+          return this.allDishes.slice().sort((a, b) => a.name.localeCompare(b.name, this.lang));
         },
 
         async openDay(day) {

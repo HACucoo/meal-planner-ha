@@ -75,6 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Refresh sensors at midnight + update last_used for dishes whose planned day just arrived
     async def _midnight_refresh(_now: datetime) -> None:
         _update_last_used_for_today(hass)
+        _cleanup_rejected_sessions(hass)
         _push_sensor_update(hass)
 
     hass.data[DOMAIN]["cancel_midnight"] = async_track_time_change(
@@ -135,6 +136,17 @@ def _update_last_used_for_today(hass: HomeAssistant) -> None:
     store = hass.data[DOMAIN].get("store")
     if store:
         hass.async_create_task(store.async_save(data))
+
+
+def _cleanup_rejected_sessions(hass: HomeAssistant) -> None:
+    """Remove stale rejection sessions for past dates."""
+    sessions = hass.data.get(DOMAIN, {}).get("rejected_sessions")
+    if not sessions:
+        return
+    today_iso = date.today().isoformat()
+    stale = [k for k in sessions if k < today_iso]
+    for k in stale:
+        del sessions[k]
 
 
 def _default_data() -> dict:
@@ -307,6 +319,8 @@ class MealPlannerDayView(HomeAssistantView):
         entry: dict[str, Any] = {"type": plan_type}
         today_iso = date.today().isoformat()
         is_past_or_today = day <= today_iso
+        # Check if this day already had a plan (prevents double-counting use_count on re-save)
+        previous_plan = data.get("meal_plan", {}).get(day)
 
         if plan_type == TYPE_DISH:
             dish_id = body.get("dish_id")
@@ -315,7 +329,10 @@ class MealPlannerDayView(HomeAssistantView):
                 return self.json_message("dish not found", status_code=404)
             if is_past_or_today:
                 dish["last_used"] = day
-                dish["use_count"] = dish.get("use_count", 0) + 1
+                # Only increment use_count if this day wasn't already planned with this dish
+                prev_dish_id = previous_plan.get("dish_id") if previous_plan else None
+                if prev_dish_id != dish_id:
+                    dish["use_count"] = dish.get("use_count", 0) + 1
             entry["dish_id"] = dish_id
             entry["dish_name"] = dish["name"]
         elif plan_type == "custom":
@@ -324,10 +341,12 @@ class MealPlannerDayView(HomeAssistantView):
                 return self.json_message("dish_name is required for custom type", status_code=400)
             # Update last_used on matching dish in list (by name)
             if is_past_or_today:
+                prev_name = (previous_plan.get("dish_name") or "").strip().lower() if previous_plan else ""
                 for d in data["dishes"]:
                     if d["name"].lower() == entry["dish_name"].lower():
                         d["last_used"] = day
-                        d["use_count"] = d.get("use_count", 0) + 1
+                        if prev_name != d["name"].lower():
+                            d["use_count"] = d.get("use_count", 0) + 1
                         entry["dish_id"] = d["id"]
                         break
             # Optionally add to dishes list
@@ -477,10 +496,9 @@ class MealPlannerHistoryCSVView(HomeAssistantView):
     }
 
     async def get(self, request: web.Request) -> web.Response:
-        # Detect language from Accept-Language header (de or en, default de)
-        accept_lang = request.headers.get("Accept-Language", "de")
-        lang = "en" if accept_lang.lower().startswith("en") else "de"
-        type_labels = self._TYPE_LABELS[lang]
+        entry = self.hass.data.get(DOMAIN, {}).get("entry")
+        lang = entry.options.get("lang", "de") if entry else "de"
+        type_labels = self._TYPE_LABELS.get(lang, self._TYPE_LABELS["de"])
 
         data = self.hass.data[DOMAIN]["data"]
         meal_plan = data.get("meal_plan", {})

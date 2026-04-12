@@ -9,5 +9,15 @@
     "abort": {
       "single_instance_allowed": "Meal Planner ist bereits eingerichtet."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Meal Planner Einstellungen",
+        "data": {
+          "lang": "Sprache"
+        }
+      }
+    }
   }
 }
