@@ -88,12 +88,23 @@
       margin-bottom: 0.375rem;
       transition: border-color 0.12s;
       display: flex;
-      align-items: center;
-      gap: 0.75rem;
+      flex-direction: column;
+      gap: 0.4rem;
     }
     .suggestion-card:hover { border-color: var(--mp-text-muted); }
-    .suggestion-card .dish-info { flex: 1; min-width: 0; }
-    .suggestion-card .dish-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
+    .suggestion-card .dish-info { min-width: 0; }
+    .suggestion-card .dish-actions { display: flex; gap: 0.375rem; }
+    .suggestion-card .dish-actions .btn { flex: 1; }
+
+    @media (min-width: 600px) {
+      .suggestion-card {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .suggestion-card .dish-info { flex: 1; }
+      .suggestion-card .dish-actions .btn { flex: none; }
+    }
 
     .modal-overlay {
       position: fixed; inset: 0;
