@@ -72,8 +72,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
-    # Refresh sensors at midnight so "today" flips correctly without a restart
+    # Refresh sensors at midnight + update last_used for dishes whose planned day just arrived
     async def _midnight_refresh(_now: datetime) -> None:
+        _update_last_used_for_today(hass)
         _push_sensor_update(hass)
 
     hass.data[DOMAIN]["cancel_midnight"] = async_track_time_change(
@@ -108,6 +109,32 @@ def _push_sensor_update(hass: HomeAssistant) -> None:
     """Trigger a state refresh on all meal plan sensors."""
     for sensor in hass.data.get(DOMAIN, {}).get("sensors", []):
         sensor.async_write_ha_state()
+
+
+def _update_last_used_for_today(hass: HomeAssistant) -> None:
+    """At midnight, mark dishes planned for today as 'used'."""
+    data = hass.data.get(DOMAIN, {}).get("data")
+    if not data:
+        return
+    today_iso = date.today().isoformat()
+    plan_entry = data.get("meal_plan", {}).get(today_iso)
+    if not plan_entry or plan_entry.get("type") not in (TYPE_DISH, "custom"):
+        return
+    dish_name = (plan_entry.get("dish_name") or "").strip().lower()
+    dish_id = plan_entry.get("dish_id")
+    if not dish_name and not dish_id:
+        return
+    for dish in data.get("dishes", []):
+        if (dish_id and dish["id"] == dish_id) or dish["name"].lower() == dish_name:
+            # Only update if this date is newer than the stored last_used
+            if not dish.get("last_used") or dish["last_used"] < today_iso:
+                dish["last_used"] = today_iso
+                dish["use_count"] = dish.get("use_count", 0) + 1
+            break
+    # Persist without blocking
+    store = hass.data[DOMAIN].get("store")
+    if store:
+        hass.async_create_task(store.async_save(data))
 
 
 def _default_data() -> dict:
@@ -278,30 +305,41 @@ class MealPlannerDayView(HomeAssistantView):
 
         data = self.hass.data[DOMAIN]["data"]
         entry: dict[str, Any] = {"type": plan_type}
+        today_iso = date.today().isoformat()
+        is_past_or_today = day <= today_iso
 
         if plan_type == TYPE_DISH:
             dish_id = body.get("dish_id")
             dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
             if dish is None:
                 return self.json_message("dish not found", status_code=404)
-            dish["last_used"] = day
-            dish["use_count"] = dish.get("use_count", 0) + 1
+            if is_past_or_today:
+                dish["last_used"] = day
+                dish["use_count"] = dish.get("use_count", 0) + 1
             entry["dish_id"] = dish_id
             entry["dish_name"] = dish["name"]
         elif plan_type == "custom":
             entry["dish_name"] = (body.get("dish_name") or "").strip()
             if not entry["dish_name"]:
                 return self.json_message("dish_name is required for custom type", status_code=400)
+            # Update last_used on matching dish in list (by name)
+            if is_past_or_today:
+                for d in data["dishes"]:
+                    if d["name"].lower() == entry["dish_name"].lower():
+                        d["last_used"] = day
+                        d["use_count"] = d.get("use_count", 0) + 1
+                        entry["dish_id"] = d["id"]
+                        break
             # Optionally add to dishes list
             if body.get("add_to_list"):
                 if not any(d["name"].lower() == entry["dish_name"].lower() for d in data["dishes"]):
                     new_dish = {
                         "id": str(uuid.uuid4()),
                         "name": entry["dish_name"],
-                        "last_used": day,
+                        "last_used": day if is_past_or_today else None,
                         "blocked_until": None,
-                        "use_count": 1,
-                        "created_at": day,
+                        "use_count": 1 if is_past_or_today else 0,
+                        "created_at": today_iso,
                     }
                     data["dishes"].append(new_dish)
                     entry["dish_id"] = new_dish["id"]
