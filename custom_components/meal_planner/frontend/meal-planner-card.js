@@ -37,6 +37,12 @@ function toISO(date) {
   return `${y}-${m}-${d}`;
 }
 
+function esc(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
 class MealPlannerListCard extends HTMLElement {
   constructor() {
     super();
@@ -64,7 +70,7 @@ class MealPlannerListCard extends HTMLElement {
 
   _strings() {
     const lang = this._config.lang
-      || (navigator.language || 'de').startsWith('de') ? 'de' : 'en';
+      || ((navigator.language || 'de').startsWith('de') ? 'de' : 'en');
     return STRINGS[lang] || STRINGS.de;
   }
 
@@ -102,7 +108,7 @@ class MealPlannerListCard extends HTMLElement {
     }
 
     const title = this._config.title
-      ? `<div class="title">${this._config.title}</div>`
+      ? `<div class="title">${esc(this._config.title)}</div>`
       : '';
 
     this.shadowRoot.innerHTML = `
@@ -146,8 +152,8 @@ class MealPlannerListCard extends HTMLElement {
         ${title}
         ${days.map(d => `
           <div class="row${d.isToday ? ' today' : ''}">
-            <span class="wd">${d.weekday}</span>
-            <span class="meal${d.text === S.notPlanned ? ' empty' : ''}">${d.text}</span>
+            <span class="wd">${esc(d.weekday)}</span>
+            <span class="meal${d.text === S.notPlanned ? ' empty' : ''}">${esc(d.text)}</span>
           </div>
         `).join('')}
       </ha-card>
