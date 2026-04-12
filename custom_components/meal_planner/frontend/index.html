@@ -556,19 +556,17 @@
 
           <div class="flex flex-col gap-1.5">
             <template x-for="(dish, idx) in statsData.top_dishes" :key="dish.name">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400 w-4 text-right shrink-0" x-text="idx + 1"></span>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2">
-                    <div
-                      class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
-                      :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
-                    >
-                      <span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span>
-                    </div>
+              <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
+                <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
+                <div class="min-w-0">
+                  <div
+                    class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                    :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
+                  >
+                    <span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span>
                   </div>
                 </div>
-                <span class="text-sm text-white truncate max-w-[55%] shrink-0 text-right" x-text="dish.name"></span>
+                <span class="text-sm text-white truncate text-right" x-text="dish.name"></span>
               </div>
             </template>
           </div>
