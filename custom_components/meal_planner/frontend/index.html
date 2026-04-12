@@ -215,6 +215,8 @@
     <div class="mt-5 text-center flex items-center justify-center gap-4">
       <button class="text-gray-600 text-xs hover:text-gray-400 underline" @click="openDishManager()" x-text="S.manageDishes"></button>
       <span class="text-gray-700 text-xs">·</span>
+      <button class="text-gray-600 text-xs hover:text-gray-400 underline" @click="openStats()" x-text="S.statistics"></button>
+      <span class="text-gray-700 text-xs">·</span>
       <a class="text-gray-600 text-xs hover:text-gray-400 underline" href="/api/meal_planner/history.csv" download="meal-history.csv" x-text="S.downloadHistory"></a>
     </div>
   </div>
@@ -508,6 +510,73 @@
     </div>
   </div>
 
+  <!-- ================================================================
+       STATISTICS MODAL
+  ================================================================ -->
+  <div class="modal-overlay" x-show="showStats" x-transition @click.self="showStats = false">
+    <div class="modal" x-show="showStats" x-transition>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-white" x-text="S.statsTitle"></h2>
+        <button class="text-gray-500 hover:text-white text-2xl leading-none" @click="showStats = false">×</button>
+      </div>
+
+      <!-- Loading -->
+      <template x-if="!statsData">
+        <div class="text-center py-6 text-gray-500">⏳</div>
+      </template>
+
+      <template x-if="statsData">
+        <div>
+          <!-- Summary tiles -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div class="bg-gray-800 rounded-xl p-3 text-center">
+              <p class="text-xl font-bold text-white" x-text="statsData.total_days"></p>
+              <p class="text-xs text-gray-500" x-text="S.statsTotalDays"></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-3 text-center">
+              <p class="text-xl font-bold text-green-400" x-text="statsData.total_cooked"></p>
+              <p class="text-xs text-gray-500" x-text="S.statsCooked"></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-3 text-center">
+              <p class="text-xl font-bold text-amber-400" x-text="statsData.total_eating_out"></p>
+              <p class="text-xs text-gray-500" x-text="S.statsEatingOut"></p>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-3 text-center">
+              <p class="text-xl font-bold text-blue-400" x-text="statsData.total_order"></p>
+              <p class="text-xs text-gray-500" x-text="S.statsOrdered"></p>
+            </div>
+          </div>
+
+          <!-- Top 10 bar chart -->
+          <p class="section-label" x-text="S.statsTop10"></p>
+
+          <template x-if="statsData.top_dishes.length === 0">
+            <p class="text-gray-500 italic text-sm text-center py-3" x-text="S.statsNoData"></p>
+          </template>
+
+          <div class="flex flex-col gap-1.5">
+            <template x-for="(dish, idx) in statsData.top_dishes" :key="dish.name">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400 w-4 text-right shrink-0" x-text="idx + 1"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div
+                      class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                      :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
+                    >
+                      <span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span>
+                    </div>
+                  </div>
+                </div>
+                <span class="text-sm text-white truncate max-w-[55%] shrink-0 text-right" x-text="dish.name"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <script>
     // ── i18n strings ─────────────────────────────────────────────────────────
     const STRINGS_DE = {
@@ -584,6 +653,17 @@
       confirmDeleteAllDishes: 'Wirklich alle Gerichte löschen?',
       confirmDeleteDish: 'Gericht wirklich löschen?',
       dishAlreadyExists: 'Dieses Gericht existiert bereits.',
+
+      // Statistics
+      statistics: 'Statistik',
+      statsTitle: 'Koch-Statistik',
+      statsTop10: 'Top 10 Gerichte',
+      statsCooked: 'Gekocht',
+      statsEatingOut: 'Auswärts',
+      statsOrdered: 'Bestellt',
+      statsNoCooking: 'Kein Kochen',
+      statsTotalDays: 'Geplante Tage',
+      statsNoData: 'Noch keine Daten vorhanden.',
 
       // Date & time
       weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
@@ -667,6 +747,17 @@
       confirmDeleteDish: 'Really delete this dish?',
       dishAlreadyExists: 'This dish already exists.',
 
+      // Statistics
+      statistics: 'Statistics',
+      statsTitle: 'Cooking Statistics',
+      statsTop10: 'Top 10 Dishes',
+      statsCooked: 'Cooked',
+      statsEatingOut: 'Eating out',
+      statsOrdered: 'Ordered',
+      statsNoCooking: 'No cooking',
+      statsTotalDays: 'Planned days',
+      statsNoData: 'No data yet.',
+
       // Date & time
       weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
       weekdaysLong: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
@@ -729,6 +820,10 @@
         // Custom input
         customText: '',
         addToList: false,
+
+        // Statistics
+        showStats: false,
+        statsData: null,
 
         // Dish manager
         showDishManager: false,
@@ -983,6 +1078,15 @@
         },
 
         // ── Dish manager ──
+        async openStats() {
+          this.showStats = true;
+          this.statsData = null;
+          try {
+            const resp = await fetch(`${API}/stats`);
+            if (resp.ok) this.statsData = await resp.json();
+          } catch(e) { console.error('stats fetch failed', e); }
+        },
+
         async openDishManager() {
           this.showDishManager = true;
           this.dishManagerTab = 'list';

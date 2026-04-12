@@ -67,6 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerHistoryCSVView(hass))
     hass.http.register_view(MealPlannerChefkochView(hass))
     hass.http.register_view(MealPlannerSettingsView(hass))
+    hass.http.register_view(MealPlannerStatsView(hass))
 
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
@@ -581,3 +582,49 @@ class MealPlannerSettingsView(HomeAssistantView):
         entry: ConfigEntry = self.hass.data.get(DOMAIN, {}).get("entry")
         lang = entry.options.get("lang", "de") if entry else "de"
         return self.json({"lang": lang})
+
+
+class MealPlannerStatsView(HomeAssistantView):
+    """GET /api/meal_planner/stats – aggregated cooking statistics."""
+
+    url = "/api/meal_planner/stats"
+    name = "api:meal_planner:stats"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        data = self.hass.data[DOMAIN]["data"]
+        meal_plan = data.get("meal_plan", {})
+
+        counts: dict[str, int] = {}
+        total_cooked = 0
+        total_out = 0
+        total_order = 0
+        total_nothing = 0
+
+        for entry in meal_plan.values():
+            t = entry.get("type", "")
+            if t in ("dish", "custom"):
+                total_cooked += 1
+                name = (entry.get("dish_name") or "").strip()
+                if name:
+                    counts[name] = counts.get(name, 0) + 1
+            elif t == "eating_out":
+                total_out += 1
+            elif t == "order":
+                total_order += 1
+            elif t == "nothing":
+                total_nothing += 1
+
+        top = sorted(counts.items(), key=lambda x: -x[1])[:10]
+
+        return self.json({
+            "top_dishes": [{"name": n, "count": c} for n, c in top],
+            "total_days": len(meal_plan),
+            "total_cooked": total_cooked,
+            "total_eating_out": total_out,
+            "total_order": total_order,
+            "total_nothing": total_nothing,
+        })
