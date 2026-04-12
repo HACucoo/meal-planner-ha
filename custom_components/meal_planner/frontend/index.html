@@ -347,15 +347,37 @@
                   <span class="text-xl">🚫</span>
                   <span class="text-xs" x-text="S.nothing"></span>
                 </button>
-                <button class="btn btn-warn flex flex-col items-center gap-1 py-2.5" @click="setSpecial('eating_out')">
+                <button
+                  class="btn flex flex-col items-center gap-1 py-2.5"
+                  :class="specialPending === 'eating_out' ? 'btn-warn ring-2 ring-amber-400' : 'btn-warn'"
+                  @click="toggleSpecialInput('eating_out')"
+                >
                   <span class="text-xl">🍽️</span>
                   <span class="text-xs" x-text="S.eatingOut"></span>
                 </button>
-                <button class="btn btn-primary flex flex-col items-center gap-1 py-2.5" @click="setSpecial('order')">
+                <button
+                  class="btn flex flex-col items-center gap-1 py-2.5"
+                  :class="specialPending === 'order' ? 'btn-primary ring-2 ring-blue-400' : 'btn-primary'"
+                  @click="toggleSpecialInput('order')"
+                >
                   <span class="text-xl">📦</span>
                   <span class="text-xs" x-text="S.order"></span>
                 </button>
               </div>
+              <!-- Optional label input for eating_out / order -->
+              <template x-if="specialPending">
+                <div class="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    x-model="specialLabel"
+                    :placeholder="S.specialLabelPlaceholder"
+                    class="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+                    @keydown.enter="confirmSpecial()"
+                    x-ref="specialInput"
+                  />
+                  <button class="btn btn-success text-sm" @click="confirmSpecial()" x-text="S.save"></button>
+                </div>
+              </template>
 
               <!-- Surprise me -->
               <div class="flex gap-2 mb-2">
@@ -554,22 +576,62 @@
             <p class="text-gray-500 italic text-sm text-center py-3" x-text="S.statsNoData"></p>
           </template>
 
-          <div class="flex flex-col gap-1.5">
-            <template x-for="(dish, idx) in statsData.top_dishes" :key="dish.name">
-              <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
-                <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
-                <div class="min-w-0">
-                  <div
-                    class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
-                    :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
-                  >
-                    <span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span>
+          <!-- Reusable bar chart via helper -->
+          <template x-if="statsData.top_dishes.length > 0">
+            <div class="flex flex-col gap-1.5 mb-4">
+              <template x-for="(dish, idx) in statsData.top_dishes" :key="'d'+dish.name">
+                <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
+                  <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
+                  <div class="min-w-0">
+                    <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                      :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
+                    ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span></div>
                   </div>
+                  <span class="text-sm text-white truncate text-right" x-text="dish.name"></span>
                 </div>
-                <span class="text-sm text-white truncate text-right" x-text="dish.name"></span>
+              </template>
+            </div>
+          </template>
+
+          <!-- Top eating out -->
+          <template x-if="statsData.top_eating_out && statsData.top_eating_out.length > 0">
+            <div class="mb-4">
+              <p class="section-label" x-text="S.statsTopEatingOut"></p>
+              <div class="flex flex-col gap-1.5">
+                <template x-for="(item, idx) in statsData.top_eating_out" :key="'e'+item.name">
+                  <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
+                    <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
+                    <div class="min-w-0">
+                      <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                        :style="`width: ${Math.max(8, (item.count / statsData.top_eating_out[0].count) * 100)}%; background: linear-gradient(90deg, #d97706, #f59e0b);`"
+                      ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
+                    </div>
+                    <span class="text-sm text-white truncate text-right" x-text="item.name"></span>
+                  </div>
+                </template>
               </div>
-            </template>
-          </div>
+            </div>
+          </template>
+
+          <!-- Top orders -->
+          <template x-if="statsData.top_order && statsData.top_order.length > 0">
+            <div class="mb-4">
+              <p class="section-label" x-text="S.statsTopOrder"></p>
+              <div class="flex flex-col gap-1.5">
+                <template x-for="(item, idx) in statsData.top_order" :key="'o'+item.name">
+                  <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
+                    <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
+                    <div class="min-w-0">
+                      <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                        :style="`width: ${Math.max(8, (item.count / statsData.top_order[0].count) * 100)}%; background: linear-gradient(90deg, #2563eb, #3b82f6);`"
+                      ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
+                    </div>
+                    <span class="text-sm text-white truncate text-right" x-text="item.name"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
     </div>
@@ -609,6 +671,7 @@
       nothing: 'Kein Kochen',
       eatingOut: 'Auswärts',
       order: 'Bestellen',
+      specialLabelPlaceholder: 'Wo? (optional)',
 
       // Surprise
       surpriseMe: 'Überrasch mich!',
@@ -656,6 +719,8 @@
       statistics: 'Statistik',
       statsTitle: 'Koch-Statistik',
       statsTop10: 'Top 10 Gerichte',
+      statsTopEatingOut: 'Top Auswärts',
+      statsTopOrder: 'Top Bestellt',
       statsCooked: 'Gekocht',
       statsEatingOut: 'Auswärts',
       statsOrdered: 'Bestellt',
@@ -702,6 +767,7 @@
       nothing: 'No cooking',
       eatingOut: 'Eating out',
       order: 'Order',
+      specialLabelPlaceholder: 'Where? (optional)',
 
       // Surprise
       surpriseMe: 'Surprise me!',
@@ -749,6 +815,8 @@
       statistics: 'Statistics',
       statsTitle: 'Cooking Statistics',
       statsTop10: 'Top 10 Dishes',
+      statsTopEatingOut: 'Top Eating Out',
+      statsTopOrder: 'Top Orders',
       statsCooked: 'Cooked',
       statsEatingOut: 'Eating out',
       statsOrdered: 'Ordered',
@@ -817,6 +885,8 @@
         // Surprise
         surpriseResult: null,
         surpriseSource: 'themealdb',
+        specialPending: null,
+        specialLabel: '',
         surpriseLoading: false,
 
         // Custom input
@@ -951,6 +1021,8 @@
           this.modalOpen = false;
           this.editMode = false;
           this.surpriseResult = null;
+          this.specialPending = null;
+          this.specialLabel = '';
         },
         async startEdit() {
           this.editMode = true;
@@ -994,7 +1066,27 @@
           }
         },
 
+        toggleSpecialInput(type) {
+          if (this.specialPending === type) {
+            // Toggle off
+            this.specialPending = null;
+            this.specialLabel = '';
+          } else {
+            this.specialPending = type;
+            this.specialLabel = '';
+            this.$nextTick(() => { this.$refs.specialInput?.focus(); });
+          }
+        },
+        async confirmSpecial() {
+          const payload = { type: this.specialPending };
+          if (this.specialLabel.trim()) payload.dish_name = this.specialLabel.trim();
+          this.specialPending = null;
+          this.specialLabel = '';
+          await this.saveDay(payload);
+        },
         async setSpecial(type) {
+          this.specialPending = null;
+          this.specialLabel = '';
           await this.saveDay({ type });
         },
         async saveCustom() {

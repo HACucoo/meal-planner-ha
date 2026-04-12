@@ -654,7 +654,9 @@ class MealPlannerStatsView(HomeAssistantView):
         data = self.hass.data[DOMAIN]["data"]
         meal_plan = data.get("meal_plan", {})
 
-        counts: dict[str, int] = {}
+        dish_counts: dict[str, int] = {}
+        out_counts: dict[str, int] = {}
+        order_counts: dict[str, int] = {}
         total_cooked = 0
         total_out = 0
         total_order = 0
@@ -662,22 +664,29 @@ class MealPlannerStatsView(HomeAssistantView):
 
         for entry in meal_plan.values():
             t = entry.get("type", "")
+            name = (entry.get("dish_name") or "").strip()
             if t in ("dish", "custom"):
                 total_cooked += 1
-                name = (entry.get("dish_name") or "").strip()
                 if name:
-                    counts[name] = counts.get(name, 0) + 1
+                    dish_counts[name] = dish_counts.get(name, 0) + 1
             elif t == "eating_out":
                 total_out += 1
+                if name:
+                    out_counts[name] = out_counts.get(name, 0) + 1
             elif t == "order":
                 total_order += 1
+                if name:
+                    order_counts[name] = order_counts.get(name, 0) + 1
             elif t == "nothing":
                 total_nothing += 1
 
-        top = sorted(counts.items(), key=lambda x: -x[1])[:10]
+        def top10(c: dict) -> list:
+            return [{"name": n, "count": v} for n, v in sorted(c.items(), key=lambda x: -x[1])[:10]]
 
         return self.json({
-            "top_dishes": [{"name": n, "count": c} for n, c in top],
+            "top_dishes": top10(dish_counts),
+            "top_eating_out": top10(out_counts),
+            "top_order": top10(order_counts),
             "total_days": len(meal_plan),
             "total_cooked": total_cooked,
             "total_eating_out": total_out,
