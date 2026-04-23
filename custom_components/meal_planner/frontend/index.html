@@ -17,6 +17,56 @@
       --mp-text-muted: #6b7280;
       --mp-border:     #374151;
       --mp-primary:    #2563eb;
+
+      /* Theme-adaptive surfaces & accents (dark defaults) */
+      --mp-surface-2:  color-mix(in srgb, var(--mp-bg) 50%, var(--mp-surface));
+      --mp-surface-3:  var(--mp-bg);
+      --mp-input-bg:   color-mix(in srgb, var(--mp-bg) 40%, var(--mp-surface));
+
+      --mp-accent-green: #4ade80;
+      --mp-accent-amber: #fbbf24;
+      --mp-accent-blue:  #60a5fa;
+      --mp-accent-red:   #f87171;
+      --mp-accent-violet:#a78bfa;
+
+      /* Tag bubbles — dark mode: saturated dark bg with light text */
+      --mp-tag-dish-bg:  rgba(22,163,74,0.22);
+      --mp-tag-dish-fg:  #86efac;
+      --mp-tag-out-bg:   rgba(217,119,6,0.22);
+      --mp-tag-out-fg:   #fcd34d;
+      --mp-tag-order-bg: rgba(37,99,235,0.22);
+      --mp-tag-order-fg: #93c5fd;
+      --mp-tag-none-bg:  color-mix(in srgb, var(--mp-text-muted) 25%, transparent);
+      --mp-tag-none-fg:  var(--mp-text-muted);
+
+      /* Surprise result box */
+      --mp-violet-bg:     rgba(124,58,237,0.14);
+      --mp-violet-border: rgba(124,58,237,0.45);
+    }
+
+    /* Light mode overrides (set by JS when luminance of --mp-bg is high) */
+    :root[data-theme="light"] {
+      --mp-surface-2:  color-mix(in srgb, var(--mp-bg) 55%, var(--mp-surface));
+      --mp-surface-3:  color-mix(in srgb, var(--mp-bg) 75%, var(--mp-surface));
+      --mp-input-bg:   color-mix(in srgb, var(--mp-bg) 70%, var(--mp-surface));
+
+      --mp-accent-green: #15803d;
+      --mp-accent-amber: #b45309;
+      --mp-accent-blue:  #1d4ed8;
+      --mp-accent-red:   #b91c1c;
+      --mp-accent-violet:#6d28d9;
+
+      --mp-tag-dish-bg:  #dcfce7;
+      --mp-tag-dish-fg:  #166534;
+      --mp-tag-out-bg:   #fef3c7;
+      --mp-tag-out-fg:   #92400e;
+      --mp-tag-order-bg: #dbeafe;
+      --mp-tag-order-fg: #1e40af;
+      --mp-tag-none-bg:  #e5e7eb;
+      --mp-tag-none-fg:  #4b5563;
+
+      --mp-violet-bg:     #f5f3ff;
+      --mp-violet-border: #c4b5fd;
     }
 
     body {
@@ -32,8 +82,41 @@
     body .text-gray-500                 { color: var(--mp-text-muted) !important; }
     body .text-gray-600,
     body .text-gray-700                 { color: color-mix(in srgb, var(--mp-text-muted) 55%, transparent) !important; }
-    /* Preserve semantic tag text colors */
-    .tag                                { color: unset !important; }
+
+    /* Theme-adaptive surfaces (Tailwind utility overrides) */
+    body .bg-gray-700                   { background-color: var(--mp-surface)   !important; }
+    body .bg-gray-800                   { background-color: var(--mp-surface-2) !important; }
+    body .bg-gray-900                   { background-color: var(--mp-surface-3) !important; }
+    body .border-gray-600,
+    body .border-gray-700               { border-color: var(--mp-border) !important; }
+
+    /* Accent text colors adapt to theme (readable on both light & dark bg) */
+    body .text-green-400                { color: var(--mp-accent-green)  !important; }
+    body .text-amber-400                { color: var(--mp-accent-amber)  !important; }
+    body .text-blue-400                 { color: var(--mp-accent-blue)   !important; }
+    body .text-red-400                  { color: var(--mp-accent-red)    !important; }
+    body .text-violet-400               { color: var(--mp-accent-violet) !important; }
+
+    /* Form inputs: adapt bg when dark-gray is used as input bg */
+    body input.bg-gray-800,
+    body select.bg-gray-800,
+    body textarea.bg-gray-800           { background-color: var(--mp-input-bg) !important; color: var(--mp-text) !important; }
+    body input::placeholder,
+    body select::placeholder,
+    body textarea::placeholder          { color: var(--mp-text-muted) !important; opacity: 0.7; }
+
+    /* Surprise result box */
+    body .bg-violet-950                 { background-color: var(--mp-violet-bg)     !important; }
+    body .border-violet-700             { border-color:      var(--mp-violet-border) !important; }
+
+    /* Stats bar: text inside the colored gradient stays white in both modes */
+    .bar-fill .text-white               { color: #fff !important; }
+
+    /* Hover-state color overrides (Tailwind generates .hover\:text-*) */
+    body .hover\:text-white:hover,
+    body .hover\:text-gray-300:hover,
+    body .hover\:text-gray-400:hover    { color: var(--mp-text) !important; }
+    body .hover\:text-red-400:hover     { color: var(--mp-accent-red) !important; }
 
     .day-card {
       transition: transform 0.1s, box-shadow 0.1s;
@@ -108,7 +191,7 @@
 
     .modal-overlay {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,0.75);
+      background: rgba(0,0,0,0.55);
       z-index: 50;
       display: flex; align-items: center; justify-content: center;
       padding: 1rem;
@@ -120,11 +203,9 @@
       max-height: 92vh;
       overflow-y: auto;
       padding: 1.1rem 1.25rem;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+      box-shadow: 0 25px 60px rgba(0,0,0,0.35);
+      border: 1px solid var(--mp-border);
     }
-    /* "Currently planned" inner box */
-    .modal .bg-gray-800 { background: color-mix(in srgb, var(--mp-bg) 50%, var(--mp-surface)) !important; }
-
     .tag {
       display: inline-block;
       border-radius: 9999px;
@@ -134,6 +215,11 @@
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
+    /* Semantic tag variants (readable in both light & dark themes) */
+    .tag-dish  { background: var(--mp-tag-dish-bg)  !important; color: var(--mp-tag-dish-fg)  !important; }
+    .tag-out   { background: var(--mp-tag-out-bg)   !important; color: var(--mp-tag-out-fg)   !important; }
+    .tag-order { background: var(--mp-tag-order-bg) !important; color: var(--mp-tag-order-fg) !important; }
+    .tag-none  { background: var(--mp-tag-none-bg)  !important; color: var(--mp-tag-none-fg)  !important; }
 
     .section-label {
       font-size: 0.75rem;
@@ -583,7 +669,7 @@
                 <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
                   <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
                   <div class="min-w-0">
-                    <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                    <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
                       :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
                     ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span></div>
                   </div>
@@ -602,7 +688,7 @@
                   <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
                     <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
                     <div class="min-w-0">
-                      <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                      <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
                         :style="`width: ${Math.max(8, (item.count / statsData.top_eating_out[0].count) * 100)}%; background: linear-gradient(90deg, #d97706, #f59e0b);`"
                       ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
                     </div>
@@ -622,7 +708,7 @@
                   <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
                     <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
                     <div class="min-w-0">
-                      <div class="h-6 rounded-md flex items-center px-2 min-w-[2rem]"
+                      <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
                         :style="`width: ${Math.max(8, (item.count / statsData.top_order[0].count) * 100)}%; background: linear-gradient(90deg, #2563eb, #3b82f6);`"
                       ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
                     </div>
@@ -922,20 +1008,39 @@
 
         applyHATheme() {
           try {
-            if (window.parent === window) return; // not embedded in HA panel
-            const ps = getComputedStyle(window.parent.document.documentElement);
-            const get = v => ps.getPropertyValue(v).trim();
-            const r = document.documentElement;
-            const map = {
-              '--mp-bg':         get('--primary-background-color') || get('--lovelace-background'),
-              '--mp-surface':    get('--card-background-color') || get('--secondary-background-color'),
-              '--mp-text':       get('--primary-text-color'),
-              '--mp-text-muted': get('--secondary-text-color'),
-              '--mp-border':     get('--divider-color'),
-              '--mp-primary':    get('--primary-color'),
-            };
-            Object.entries(map).forEach(([k, v]) => { if (v) r.style.setProperty(k, v); });
+            if (window.parent !== window) {
+              const ps = getComputedStyle(window.parent.document.documentElement);
+              const get = v => ps.getPropertyValue(v).trim();
+              const r = document.documentElement;
+              const map = {
+                '--mp-bg':         get('--primary-background-color') || get('--lovelace-background'),
+                '--mp-surface':    get('--card-background-color') || get('--secondary-background-color'),
+                '--mp-text':       get('--primary-text-color'),
+                '--mp-text-muted': get('--secondary-text-color'),
+                '--mp-border':     get('--divider-color'),
+                '--mp-primary':    get('--primary-color'),
+              };
+              Object.entries(map).forEach(([k, v]) => { if (v) r.style.setProperty(k, v); });
+            }
           } catch(e) { /* cross-origin or standalone – keep dark defaults */ }
+          // Always detect light vs dark (works for standalone too)
+          this.detectThemeMode();
+        },
+
+        detectThemeMode() {
+          try {
+            // Use a temporary probe element to resolve the actual computed bg color
+            const probe = document.createElement('div');
+            probe.style.cssText = 'position:absolute;visibility:hidden;background:var(--mp-bg);';
+            document.body.appendChild(probe);
+            const rgb = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            const m = rgb.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+            if (!m) return;
+            // Perceived luminance (ITU-R BT.601)
+            const lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+            document.documentElement.setAttribute('data-theme', lum > 0.55 ? 'light' : 'dark');
+          } catch(e) { /* fall back to dark defaults */ }
         },
 
         async loadPlan() {
@@ -982,13 +1087,13 @@
         },
         typeTagClass(type) {
           const map = {
-            dish:       'bg-green-900 text-green-300',
-            custom:     'bg-green-900 text-green-300',
-            eating_out: 'bg-amber-900 text-amber-300',
-            order:      'bg-blue-900 text-blue-300',
-            nothing:    'bg-gray-700 text-gray-400',
+            dish:       'tag-dish',
+            custom:     'tag-dish',
+            eating_out: 'tag-out',
+            order:      'tag-order',
+            nothing:    'tag-none',
           };
-          return map[type] || 'bg-gray-700 text-gray-400';
+          return map[type] || 'tag-none';
         },
         typeLabel(type) {
           return this.S[`type_${type}`] || type;
