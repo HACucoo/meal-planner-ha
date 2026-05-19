@@ -15,7 +15,9 @@
       "init": {
         "title": "Meal Planner Settings",
         "data": {
-          "lang": "Language"
+          "lang": "Language",
+          "holiday_country": "Country (for holiday markers)",
+          "holiday_state": "Federal state (Germany only)"
         }
       }
     }

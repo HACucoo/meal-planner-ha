@@ -54,3 +54,37 @@ TYPE_EATING_OUT = "eating_out"
 TYPE_ORDER = "order"
 TYPE_NOTHING = "nothing"
 TYPE_CUSTOM = "custom"
+
+# Config option keys
+CONF_LANG = "lang"
+CONF_HOLIDAY_COUNTRY = "holiday_country"
+CONF_HOLIDAY_STATE = "holiday_state"
+
+# Supported holiday countries (subset of python-holidays)
+HOLIDAY_COUNTRIES = {
+    "": "Aus",
+    "DE": "Deutschland",
+    "AT": "Österreich",
+    "CH": "Schweiz",
+}
+
+# German federal states (ISO 3166-2 subdivisions used by python-holidays)
+HOLIDAY_STATES_DE = {
+    "": "Nur bundesweite Feiertage",
+    "BW": "Baden-Württemberg",
+    "BY": "Bayern",
+    "BE": "Berlin",
+    "BB": "Brandenburg",
+    "HB": "Bremen",
+    "HH": "Hamburg",
+    "HE": "Hessen",
+    "MV": "Mecklenburg-Vorpommern",
+    "NI": "Niedersachsen",
+    "NW": "Nordrhein-Westfalen",
+    "RP": "Rheinland-Pfalz",
+    "SL": "Saarland",
+    "SN": "Sachsen",
+    "ST": "Sachsen-Anhalt",
+    "SH": "Schleswig-Holstein",
+    "TH": "Thüringen",
+}

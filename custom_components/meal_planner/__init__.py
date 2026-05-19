@@ -68,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerChefkochView(hass))
     hass.http.register_view(MealPlannerSettingsView(hass))
     hass.http.register_view(MealPlannerStatsView(hass))
+    hass.http.register_view(MealPlannerHolidaysView(hass))
 
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
@@ -693,3 +694,74 @@ class MealPlannerStatsView(HomeAssistantView):
             "total_order": total_order,
             "total_nothing": total_nothing,
         })
+
+
+class MealPlannerHolidaysView(HomeAssistantView):
+    """GET /api/meal_planner/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD
+
+    Returns {"YYYY-MM-DD": "Holiday Name", ...} for the configured country/state.
+    Returns {} when no country is configured or the holidays library is unavailable.
+    """
+
+    url = "/api/meal_planner/holidays"
+    name = "api:meal_planner:holidays"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        entry: ConfigEntry | None = self.hass.data.get(DOMAIN, {}).get("entry")
+        if entry is None:
+            return self.json({})
+
+        country = (entry.options.get("holiday_country") or "").strip()
+        state = (entry.options.get("holiday_state") or "").strip()
+        if not country:
+            return self.json({})
+
+        from_param = request.query.get("from")
+        to_param = request.query.get("to")
+        try:
+            from_date = date.fromisoformat(from_param) if from_param else date.today()
+            to_date = date.fromisoformat(to_param) if to_param else from_date + timedelta(days=21)
+        except (TypeError, ValueError):
+            return self.json({})
+
+        if to_date < from_date:
+            return self.json({})
+
+        # Compute holidays in executor — the holidays library does some I/O on first import
+        result = await self.hass.async_add_executor_job(
+            _compute_holidays, country, state, from_date, to_date,
+        )
+        return self.json(result)
+
+
+def _compute_holidays(country: str, state: str, from_date: date, to_date: date) -> dict[str, str]:
+    """Build a {iso_date: name} mapping for the given range. Safe to call in executor."""
+    try:
+        import holidays as _holidays_lib
+    except ImportError:
+        _LOGGER.warning("python-holidays library not available")
+        return {}
+
+    years = list(range(from_date.year, to_date.year + 1))
+    try:
+        kwargs = {"years": years}
+        # State only applies for Germany in our supported set
+        if country == "DE" and state:
+            kwargs["subdiv"] = state
+        cal = _holidays_lib.country_holidays(country, **kwargs)
+    except (KeyError, NotImplementedError, Exception) as err:  # noqa: BLE001
+        _LOGGER.warning("Failed to load holidays for %s/%s: %s", country, state, err)
+        return {}
+
+    result: dict[str, str] = {}
+    d = from_date
+    while d <= to_date:
+        name = cal.get(d)
+        if name:
+            result[d.isoformat()] = name
+        d += timedelta(days=1)
+    return result
