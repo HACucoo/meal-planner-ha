@@ -58,10 +58,27 @@ class MealPlannerListCard extends HTMLElement {
     this._hass = hass;
     if (!this._initialized) {
       this._initialized = true;
+      this._stateSig = this._mealSensorSignature(hass);
       this._render();
       // Refresh every 5 minutes so the card stays current after midnight
       this._refreshTimer = setInterval(() => this._render(), 5 * 60 * 1000);
+      return;
     }
+    // Re-render promptly when a meal-planner sensor changes (e.g. today/tomorrow edited)
+    const sig = this._mealSensorSignature(hass);
+    if (sig !== this._stateSig) {
+      this._stateSig = sig;
+      this._render();
+    }
+  }
+
+  _mealSensorSignature(hass) {
+    if (!hass || !hass.states) return '';
+    return Object.keys(hass.states)
+      .filter(id => id.startsWith('sensor.meal_planner_'))
+      .sort()
+      .map(id => `${id}=${hass.states[id].state}`)
+      .join('|');
   }
 
   disconnectedCallback() {

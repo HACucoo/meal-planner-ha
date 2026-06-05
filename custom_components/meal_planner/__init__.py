@@ -7,9 +7,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import json as _json
 import random
-import re
 
 from aiohttp import web
 from homeassistant.components.frontend import async_register_built_in_panel, async_remove_panel
@@ -28,7 +26,11 @@ from .const import (
     PANEL_URL,
     STORAGE_KEY,
     STORAGE_VERSION,
+    TYPE_CUSTOM,
     TYPE_DISH,
+    TYPE_EATING_OUT,
+    TYPE_NOTHING,
+    TYPE_ORDER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -121,7 +123,7 @@ def _update_last_used_for_today(hass: HomeAssistant) -> None:
         return
     today_iso = date.today().isoformat()
     plan_entry = data.get("meal_plan", {}).get(today_iso)
-    if not plan_entry or plan_entry.get("type") not in (TYPE_DISH, "custom"):
+    if not plan_entry or plan_entry.get("type") not in (TYPE_DISH, TYPE_CUSTOM):
         return
     dish_name = (plan_entry.get("dish_name") or "").strip().lower()
     dish_id = plan_entry.get("dish_id")
@@ -313,7 +315,7 @@ class MealPlannerDayView(HomeAssistantView):
 
         body = await request.json()
         plan_type = body.get("type")
-        allowed_types = {"dish", "eating_out", "order", "nothing", "custom"}
+        allowed_types = {TYPE_DISH, TYPE_EATING_OUT, TYPE_ORDER, TYPE_NOTHING, TYPE_CUSTOM}
         if plan_type not in allowed_types:
             return self.json_message(f"type must be one of {allowed_types}", status_code=400)
 
@@ -330,14 +332,16 @@ class MealPlannerDayView(HomeAssistantView):
             if dish is None:
                 return self.json_message("dish not found", status_code=404)
             if is_past_or_today:
-                dish["last_used"] = day
+                # Never let last_used regress when (re)planning for an older date
+                if not dish.get("last_used") or dish["last_used"] < day:
+                    dish["last_used"] = day
                 # Only increment use_count if this day wasn't already planned with this dish
                 prev_dish_id = previous_plan.get("dish_id") if previous_plan else None
                 if prev_dish_id != dish_id:
                     dish["use_count"] = dish.get("use_count", 0) + 1
             entry["dish_id"] = dish_id
             entry["dish_name"] = dish["name"]
-        elif plan_type == "custom":
+        elif plan_type == TYPE_CUSTOM:
             entry["dish_name"] = (body.get("dish_name") or "").strip()
             if not entry["dish_name"]:
                 return self.json_message("dish_name is required for custom type", status_code=400)
@@ -346,7 +350,8 @@ class MealPlannerDayView(HomeAssistantView):
                 prev_name = (previous_plan.get("dish_name") or "").strip().lower() if previous_plan else ""
                 for d in data["dishes"]:
                     if d["name"].lower() == entry["dish_name"].lower():
-                        d["last_used"] = day
+                        if not d.get("last_used") or d["last_used"] < day:
+                            d["last_used"] = day
                         if prev_name != d["name"].lower():
                             d["use_count"] = d.get("use_count", 0) + 1
                         entry["dish_id"] = d["id"]
@@ -364,9 +369,9 @@ class MealPlannerDayView(HomeAssistantView):
                     }
                     data["dishes"].append(new_dish)
                     entry["dish_id"] = new_dish["id"]
-        elif plan_type in ("eating_out", "order"):
+        elif plan_type in (TYPE_EATING_OUT, TYPE_ORDER):
             entry["dish_name"] = body.get("dish_name", "")
-        elif plan_type == "nothing":
+        elif plan_type == TYPE_NOTHING:
             entry["dish_name"] = ""
 
         data["meal_plan"][day] = entry
@@ -566,8 +571,8 @@ class MealPlannerHistoryCSVView(HomeAssistantView):
     }
 
     async def get(self, request: web.Request) -> web.Response:
-        entry = self.hass.data.get(DOMAIN, {}).get("entry")
-        lang = entry.options.get("lang", "de") if entry else "de"
+        config_entry = self.hass.data.get(DOMAIN, {}).get("entry")
+        lang = config_entry.options.get("lang", "de") if config_entry else "de"
         type_labels = self._TYPE_LABELS.get(lang, self._TYPE_LABELS["de"])
 
         data = self.hass.data[DOMAIN]["data"]
@@ -731,8 +736,14 @@ class MealPlannerStatsView(HomeAssistantView):
         total_out = 0
         total_order = 0
         total_nothing = 0
+        total_days = 0
 
-        for entry in meal_plan.values():
+        today_iso = date.today().isoformat()
+        # Statistics reflect what has actually been cooked — skip future-planned days
+        for day_iso, entry in meal_plan.items():
+            if day_iso > today_iso:
+                continue
+            total_days += 1
             t = entry.get("type", "")
             name = (entry.get("dish_name") or "").strip()
             if t in ("dish", "custom"):
@@ -757,7 +768,7 @@ class MealPlannerStatsView(HomeAssistantView):
             "top_dishes": top10(dish_counts),
             "top_eating_out": top10(out_counts),
             "top_order": top10(order_counts),
-            "total_days": len(meal_plan),
+            "total_days": total_days,
             "total_cooked": total_cooked,
             "total_eating_out": total_out,
             "total_order": total_order,
@@ -822,7 +833,7 @@ def _compute_holidays(country: str, state: str, from_date: date, to_date: date) 
         if country == "DE" and state:
             kwargs["subdiv"] = state
         cal = _holidays_lib.country_holidays(country, **kwargs)
-    except (KeyError, NotImplementedError, Exception) as err:  # noqa: BLE001
+    except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Failed to load holidays for %s/%s: %s", country, state, err)
         return {}
 

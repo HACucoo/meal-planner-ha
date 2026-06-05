@@ -50,11 +50,12 @@ class MealPlannerOptionsFlow(config_entries.OptionsFlow):
         current_country = opts.get(CONF_HOLIDAY_COUNTRY, "DE")
         current_state = opts.get(CONF_HOLIDAY_STATE, "")
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Required(CONF_LANG, default=current_lang): vol.In(LANG_OPTIONS),
-                vol.Optional(CONF_HOLIDAY_COUNTRY, default=current_country): vol.In(HOLIDAY_COUNTRIES),
-                vol.Optional(CONF_HOLIDAY_STATE, default=current_state): vol.In(HOLIDAY_STATES_DE),
-            }),
-        )
+        schema = {
+            vol.Required(CONF_LANG, default=current_lang): vol.In(LANG_OPTIONS),
+            vol.Optional(CONF_HOLIDAY_COUNTRY, default=current_country): vol.In(HOLIDAY_COUNTRIES),
+        }
+        # The federal-state field only applies to Germany — hide it for other countries
+        if current_country == "DE":
+            schema[vol.Optional(CONF_HOLIDAY_STATE, default=current_state)] = vol.In(HOLIDAY_STATES_DE)
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

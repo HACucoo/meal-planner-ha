@@ -1541,12 +1541,6 @@
           }
         },
         async unblockDish(dish) {
-          // Unblock = set blocked_until to null via a PATCH-like POST trick
-          // We'll call a dedicated endpoint we add, or do it inline
-          // For now: re-use the dishes list endpoint with a PUT
-          // Since we don't have a PATCH endpoint yet, we'll reload to show change
-          // TODO: add PATCH /api/meal_planner/dishes/{id} in next iteration
-          // For now, just reload
           try {
             const resp = await fetch(`${API}/dishes/${dish.id}/unblock`, { method: 'POST' });
             if (resp.ok) await this.loadDishes();
