@@ -1,7 +1,7 @@
 {
   "domain": "meal_planner",
   "name": "Meal Planner",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "documentation": "https://github.com/HACucoo/meal-planner-ha",
   "issue_tracker": "https://github.com/HACucoo/meal-planner-ha/issues",
   "codeowners": ["@HACucoo"],

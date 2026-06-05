@@ -3,6 +3,21 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-06-05
+
+### Fixed
+- `last_used` no longer regresses when (re)planning a dish for an older date,
+  so the "least recently cooked" suggestion order stays correct.
+- Cooking statistics now count only past/today (actually cooked) days instead
+  of treating future-planned days as already cooked.
+
+### Changed
+- Code-review cleanups: removed dead imports, used the `TYPE_*` constants in the
+  day endpoint, dropped stale comments and simplified a redundant `except`.
+- The options dialog only shows the federal-state field when the country is Germany.
+- The Lovelace list card re-renders when a meal-planner sensor changes, not only
+  every 5 minutes.
+
 ## [1.4.0] - 2026-06-05
 
 ### Added
@@ -53,6 +68,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   random recipes, summary sensors, Lovelace list card, CSV history export and
   DE / EN localisation.
 
+[1.4.1]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.1
 [1.4.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.0
 [1.3.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.3.0
 [1.2.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.2.0
