@@ -61,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.http.register_view(MealPlannerDishView(hass))
     hass.http.register_view(MealPlannerPlanView(hass))
     hass.http.register_view(MealPlannerDayView(hass))
+    hass.http.register_view(MealPlannerMoveView(hass))
     hass.http.register_view(MealPlannerSuggestView(hass))
     hass.http.register_view(MealPlannerRejectView(hass))
     hass.http.register_view(MealPlannerUnblockView(hass))
@@ -382,6 +383,74 @@ class MealPlannerDayView(HomeAssistantView):
         await self.hass.data[DOMAIN]["store"].async_save(data)
         _push_sensor_update(self.hass)
         return self.json_message("deleted")
+
+
+class MealPlannerMoveView(HomeAssistantView):
+    """POST /api/meal_planner/plan/{day}/move  – move or swap a day's meal.
+
+    Body: { "target": "YYYY-MM-DD" }
+
+    - If the target day is empty, the source entry is moved there and the
+      source day is cleared.
+    - If the target day already has an entry, the two entries are swapped.
+
+    Cooking statistics (use_count / last_used) are intentionally left
+    untouched: a move/swap only relocates existing plan entries, it is not a
+    new cooking event. The midnight job keeps counting the dish planned for the
+    current day when that day actually arrives.
+    """
+
+    url = "/api/meal_planner/plan/{day}/move"
+    name = "api:meal_planner:move"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def post(self, request: web.Request, day: str) -> web.Response:
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            return self.json_message("invalid date format", status_code=400)
+
+        body = await request.json()
+        target = body.get("target")
+        try:
+            date.fromisoformat(target)
+        except (ValueError, TypeError):
+            return self.json_message("invalid or missing target date", status_code=400)
+
+        if target == day:
+            return self.json_message("target must differ from source", status_code=400)
+
+        data = self.hass.data[DOMAIN]["data"]
+        meal_plan = data.setdefault("meal_plan", {})
+
+        src_entry = meal_plan.get(day)
+        if src_entry is None:
+            return self.json_message("nothing planned on source day", status_code=404)
+
+        dst_entry = meal_plan.get(target)
+        if dst_entry is None:
+            # Move: relocate to target, clear source
+            meal_plan[target] = src_entry
+            meal_plan.pop(day, None)
+        else:
+            # Swap the two days' entries
+            meal_plan[day] = dst_entry
+            meal_plan[target] = src_entry
+
+        # Rejection sessions are per-day planning aids — drop them for both days
+        sessions = self.hass.data[DOMAIN]["rejected_sessions"]
+        sessions.pop(day, None)
+        sessions.pop(target, None)
+
+        await self.hass.data[DOMAIN]["store"].async_save(data)
+        _push_sensor_update(self.hass)
+        return self.json({
+            "source": {"date": day, "entry": meal_plan.get(day)},
+            "target": {"date": target, "entry": meal_plan.get(target)},
+        })
 
 
 class MealPlannerSuggestView(HomeAssistantView):
