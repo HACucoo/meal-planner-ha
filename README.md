@@ -12,6 +12,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 - **Accept / Skip / Block** — skip a dish just for today (↷), block it for 2 weeks (✕), or accept it (✓); accepted dishes get historized
 - **Dish picker dropdown** — A–Z sorted list of all your dishes right in the day modal, alongside the free-text field
 - **Quick-select** — one tap for No cooking, Eating out, or Order delivery
+- **Move / swap days** — on any planned day, move the meal to another date or swap two days within a ±7-day window
 - **Surprise me 🎲** — fetches a random recipe from [TheMealDB](https://www.themealdb.com/) (free, no API key needed)
 - **Chefkoch 👨‍🍳** — pulls a random German recipe (name + image) from Chefkoch's recipe API
 - **Dish manager** — add, remove, or bulk-edit your dish list; blocked dishes can be unblocked early
@@ -53,6 +54,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 | Own entry | Type in the free-text field, optionally save to list |
 | Surprise me | Tap 🎲 for a random TheMealDB recipe, or 👨‍🍳 for a random Chefkoch recipe |
 | Edit a planned day | Tap the day card → "Change" |
+| Move or swap a planned meal | Tap the day card → "Move / swap", then pick a day (empty = move, occupied = swap) |
 | Manage dish list | Tap "Manage dish list" at the bottom |
 | Switch language | Tap DE / EN button in the header |
 | Export history | Tap "History as CSV" at the bottom |
@@ -113,6 +115,12 @@ The card shows **7 days**: yesterday · today (highlighted) · next 5 days, each
 - Home Assistant 2023.x or newer
 - HACS (for one-click install)
 - Internet access on your HA instance (needed for Surprise me / Chefkoch features)
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
