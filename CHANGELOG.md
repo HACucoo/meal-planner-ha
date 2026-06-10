@@ -3,6 +3,34 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-06-10
+
+### Changed
+- Dish usage (`use_count` / `last_used`) is now derived from the meal plan
+  itself after every change. Editing, moving, swapping or deleting days
+  corrects the counters immediately — including moves across the today
+  boundary — and historical drift is healed automatically on startup.
+- Option changes (language, holiday country/state) apply immediately; the
+  integration reloads itself instead of requiring an HA restart.
+- A dish blocked for 2 weeks is suggested again for days *after* the block
+  expires (the block is checked against the day being planned, not today).
+- Internal: all API views share a common base class; duplicated set-up code
+  removed.
+
+### Fixed
+- Lovelace list card: the refresh timer now survives the card being detached
+  and re-attached (e.g. when switching dashboard tabs).
+- Malformed JSON bodies and oversized date ranges return proper 400 errors
+  instead of crashing with a 500.
+- CSV export guards against spreadsheet formula injection (leading `=`, `+`,
+  `-`, `@` in dish names).
+- Removed the invalid `platforms` key from the manifest.
+- README no longer mentions the removed in-header language toggle.
+
+### Added
+- Escape closes the topmost modal (move picker → day dialog → dish manager /
+  statistics).
+
 ## [1.4.1] - 2026-06-05
 
 ### Fixed
@@ -68,6 +96,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   random recipes, summary sensors, Lovelace list card, CSV history export and
   DE / EN localisation.
 
+[1.5.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.5.0
 [1.4.1]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.1
 [1.4.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.0
 [1.3.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.3.0
