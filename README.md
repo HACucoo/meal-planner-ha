@@ -17,7 +17,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 - **Chefkoch 👨‍🍳** — pulls a random German recipe (name + image) from Chefkoch's recipe API
 - **Dish manager** — add, remove, or bulk-edit your dish list; blocked dishes can be unblocked early
 - **History export** — download your full meal history as CSV
-- **DE / EN localisation** — auto-detected from browser language, toggle button in the header
+- **DE / EN localisation** — configured in the integration options (browser language as fallback)
 - **Persistent storage** — all data saved in Home Assistant's `.storage/` directory
 
 ---
@@ -56,7 +56,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 | Edit a planned day | Tap the day card → "Change" |
 | Move or swap a planned meal | Tap the day card → "Move / swap", then pick a day (empty = move, occupied = swap) |
 | Manage dish list | Tap "Manage dish list" at the bottom |
-| Switch language | Tap DE / EN button in the header |
+| Switch language | Settings → Devices & Services → Meal Planner → Configure |
 | Export history | Tap "History as CSV" at the bottom |
 
 ---

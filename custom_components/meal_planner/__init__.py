@@ -37,6 +37,9 @@ _LOGGER = logging.getLogger(__name__)
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 
+# HTTP routes can only be registered once per HA run — survives entry reloads
+DATA_HTTP_REGISTERED = f"{DOMAIN}_http_registered"
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Meal Planner from a config entry."""
@@ -47,44 +50,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data = _default_data()
         await store.async_save(data)
 
+    # Usage counters are derived from the plan — heals any drift from older versions
+    _recompute_dish_usage(data)
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["store"] = store
     hass.data[DOMAIN]["data"] = data
     hass.data[DOMAIN]["rejected_sessions"] = {}
     hass.data[DOMAIN]["entry"] = entry
 
-    # Serve static frontend files
-    await hass.http.async_register_static_paths([
-        StaticPathConfig(f"/{DOMAIN}_frontend", str(FRONTEND_DIR), cache_headers=False)
-    ])
-
-    # Register API views
-    hass.http.register_view(MealPlannerDishesView(hass))
-    hass.http.register_view(MealPlannerDishView(hass))
-    hass.http.register_view(MealPlannerPlanView(hass))
-    hass.http.register_view(MealPlannerDayView(hass))
-    hass.http.register_view(MealPlannerMoveView(hass))
-    hass.http.register_view(MealPlannerSuggestView(hass))
-    hass.http.register_view(MealPlannerRejectView(hass))
-    hass.http.register_view(MealPlannerUnblockView(hass))
-    hass.http.register_view(MealPlannerHistoryCSVView(hass))
-    hass.http.register_view(MealPlannerChefkochView(hass))
-    hass.http.register_view(MealPlannerSettingsView(hass))
-    hass.http.register_view(MealPlannerStatsView(hass))
-    hass.http.register_view(MealPlannerHolidaysView(hass))
+    # Static files + API views — register once per HA run (reload-safe)
+    if not hass.data.get(DATA_HTTP_REGISTERED):
+        await hass.http.async_register_static_paths([
+            StaticPathConfig(f"/{DOMAIN}_frontend", str(FRONTEND_DIR), cache_headers=False)
+        ])
+        for view_cls in (
+            MealPlannerDishesView,
+            MealPlannerDishView,
+            MealPlannerPlanView,
+            MealPlannerDayView,
+            MealPlannerMoveView,
+            MealPlannerSuggestView,
+            MealPlannerRejectView,
+            MealPlannerUnblockView,
+            MealPlannerHistoryCSVView,
+            MealPlannerChefkochView,
+            MealPlannerSettingsView,
+            MealPlannerStatsView,
+            MealPlannerHolidaysView,
+        ):
+            hass.http.register_view(view_cls(hass))
+        hass.data[DATA_HTTP_REGISTERED] = True
 
     # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
-    # Refresh sensors at midnight + update last_used for dishes whose planned day just arrived
+    # At midnight the just-arrived day starts counting towards dish usage
     async def _midnight_refresh(_now: datetime) -> None:
-        _update_last_used_for_today(hass)
+        _recompute_dish_usage(data)
         _cleanup_rejected_sessions(hass)
+        await store.async_save(data)
         _push_sensor_update(hass)
 
     hass.data[DOMAIN]["cancel_midnight"] = async_track_time_change(
         hass, _midnight_refresh, hour=0, minute=0, second=30
     )
+
+    # Apply option changes (language, holiday country/state) without an HA restart
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     # Register sidebar panel
     async_register_built_in_panel(
@@ -110,36 +123,45 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the integration when options change so they apply immediately."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 def _push_sensor_update(hass: HomeAssistant) -> None:
     """Trigger a state refresh on all meal plan sensors."""
     for sensor in hass.data.get(DOMAIN, {}).get("sensors", []):
         sensor.async_write_ha_state()
 
 
-def _update_last_used_for_today(hass: HomeAssistant) -> None:
-    """At midnight, mark dishes planned for today as 'used'."""
-    data = hass.data.get(DOMAIN, {}).get("data")
-    if not data:
-        return
-    today_iso = date.today().isoformat()
-    plan_entry = data.get("meal_plan", {}).get(today_iso)
-    if not plan_entry or plan_entry.get("type") not in (TYPE_DISH, TYPE_CUSTOM):
-        return
-    dish_name = (plan_entry.get("dish_name") or "").strip().lower()
-    dish_id = plan_entry.get("dish_id")
-    if not dish_name and not dish_id:
-        return
-    for dish in data.get("dishes", []):
-        if (dish_id and dish["id"] == dish_id) or dish["name"].lower() == dish_name:
-            # Only update if this date is newer than the stored last_used
-            if not dish.get("last_used") or dish["last_used"] < today_iso:
-                dish["last_used"] = today_iso
-                dish["use_count"] = dish.get("use_count", 0) + 1
-            break
-    # Persist without blocking
-    store = hass.data[DOMAIN].get("store")
-    if store:
-        hass.async_create_task(store.async_save(data))
+def _recompute_dish_usage(data: dict, today_iso: str | None = None) -> None:
+    """Derive use_count / last_used for every dish from the meal plan.
+
+    The plan is the single source of truth, so usage stays exact no matter how
+    entries are added, edited, moved, swapped or deleted. Days planned for the
+    future don't count until they arrive (the midnight job re-runs this).
+    Entries without a dish_id are matched by name, so a deleted and re-added
+    dish regains its history.
+    """
+    if today_iso is None:
+        today_iso = date.today().isoformat()
+    dishes = data.get("dishes", [])
+    by_id = {d["id"]: d for d in dishes}
+    by_name = {d["name"].lower(): d for d in dishes}
+    for d in dishes:
+        d["use_count"] = 0
+        d["last_used"] = None
+    for day_iso, plan_entry in data.get("meal_plan", {}).items():
+        if day_iso > today_iso or plan_entry.get("type") not in (TYPE_DISH, TYPE_CUSTOM):
+            continue
+        dish = by_id.get(plan_entry.get("dish_id")) or by_name.get(
+            (plan_entry.get("dish_name") or "").strip().lower()
+        )
+        if dish is None:
+            continue
+        dish["use_count"] += 1
+        if not dish["last_used"] or dish["last_used"] < day_iso:
+            dish["last_used"] = day_iso
 
 
 def _cleanup_rejected_sessions(hass: HomeAssistant) -> None:
@@ -153,20 +175,21 @@ def _cleanup_rejected_sessions(hass: HomeAssistant) -> None:
         del sessions[k]
 
 
-def _default_data() -> dict:
-    today = date.today().isoformat()
+def _new_dish(name: str) -> dict:
+    """Create a fresh dish record."""
     return {
-        "dishes": [
-            {
-                "id": str(uuid.uuid4()),
-                "name": name,
-                "last_used": None,
-                "blocked_until": None,
-                "use_count": 0,
-                "created_at": today,
-            }
-            for name in DEFAULT_DISHES
-        ],
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "last_used": None,
+        "blocked_until": None,
+        "use_count": 0,
+        "created_at": date.today().isoformat(),
+    }
+
+
+def _default_data() -> dict:
+    return {
+        "dishes": [_new_dish(name) for name in DEFAULT_DISHES],
         "meal_plan": {},
     }
 
@@ -175,14 +198,15 @@ def _get_suggestions(data: dict, day_str: str, session_rejected_ids: list[str]) 
     """Return up to 3 dish suggestions, prioritising least recently used.
 
     Excludes:
-    - dishes blocked temporarily (blocked_until > today)
+    - dishes still blocked on the day being planned (a block that expires
+      before a future target day no longer hides the dish for that day)
     - dishes skipped in the current session (session_rejected_ids)
     """
-    today = date.today().isoformat()
+    effective_day = max(date.today().isoformat(), day_str or "")
     dishes = [
         d for d in data["dishes"]
         if d["id"] not in session_rejected_ids
-        and (d.get("blocked_until") is None or d["blocked_until"] <= today)
+        and (d.get("blocked_until") is None or d["blocked_until"] <= effective_day)
     ]
     # Sort: never used first, then by last_used ascending
     dishes.sort(key=lambda d: (d["last_used"] is not None, d["last_used"] or ""))
@@ -196,54 +220,68 @@ def _get_suggestions(data: dict, day_str: str, session_rejected_ids: list[str]) 
 # API Views
 # ---------------------------------------------------------------------------
 
-class MealPlannerDishesView(HomeAssistantView):
+class MealPlannerBaseView(HomeAssistantView):
+    """Shared plumbing for the Meal Planner API views.
+
+    requires_auth is False on purpose: the sidebar panel is an iframe whose
+    fetch() calls carry no HA auth token. The API is intended for trusted
+    local networks only.
+    """
+
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    @staticmethod
+    async def read_json(request: web.Request) -> dict | None:
+        """Return the request body as a dict, or None if it isn't valid JSON."""
+        try:
+            body = await request.json()
+        except ValueError:
+            return None
+        return body if isinstance(body, dict) else None
+
+
+class MealPlannerDishesView(MealPlannerBaseView):
     """GET /api/meal_planner/dishes  – list all dishes.
     POST /api/meal_planner/dishes  – add a new dish."""
 
     url = "/api/meal_planner/dishes"
     name = "api:meal_planner:dishes"
-    requires_auth = False  # local-only integration
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
         return self.json(sorted(data["dishes"], key=lambda d: d["name"].lower()))
 
     async def post(self, request: web.Request) -> web.Response:
-        body = await request.json()
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
         name = (body.get("name") or "").strip()
         if not name:
             return self.json_message("name is required", status_code=400)
+        if len(name) > 200:
+            return self.json_message("name too long (max 200 characters)", status_code=400)
 
         data = self.hass.data[DOMAIN]["data"]
         # Avoid duplicates (case-insensitive)
         if any(d["name"].lower() == name.lower() for d in data["dishes"]):
             return self.json_message("dish already exists", status_code=409)
 
-        dish = {
-            "id": str(uuid.uuid4()),
-            "name": name,
-            "last_used": None,
-            "blocked_until": None,
-            "use_count": 0,
-            "created_at": date.today().isoformat(),
-        }
+        dish = _new_dish(name)
         data["dishes"].append(dish)
+        # A re-added dish regains its history from matching plan entries
+        _recompute_dish_usage(data)
         await self.hass.data[DOMAIN]["store"].async_save(data)
         return self.json(dish, status_code=201)
 
 
-class MealPlannerDishView(HomeAssistantView):
+class MealPlannerDishView(MealPlannerBaseView):
     """DELETE /api/meal_planner/dishes/{dish_id}  – remove a dish."""
 
     url = "/api/meal_planner/dishes/{dish_id}"
     name = "api:meal_planner:dish"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def delete(self, request: web.Request, dish_id: str) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
@@ -255,15 +293,11 @@ class MealPlannerDishView(HomeAssistantView):
         return self.json_message("deleted")
 
 
-class MealPlannerPlanView(HomeAssistantView):
+class MealPlannerPlanView(MealPlannerBaseView):
     """GET /api/meal_planner/plan?week=YYYY-WNN  – return the full week plan."""
 
     url = "/api/meal_planner/plan"
     name = "api:meal_planner:plan"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         from_param = request.query.get("from")
@@ -276,7 +310,10 @@ class MealPlannerPlanView(HomeAssistantView):
                 end = date.fromisoformat(to_param)
             except ValueError:
                 return self.json_message("invalid date format, use YYYY-MM-DD", status_code=400)
-            days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+            span = (end - start).days
+            if span < 0 or span > 366:
+                return self.json_message("date range must be 0–366 days", status_code=400)
+            days = [start + timedelta(days=i) for i in range(span + 1)]
         elif week_param:
             try:
                 year, week = week_param.split("-W")
@@ -297,15 +334,11 @@ class MealPlannerPlanView(HomeAssistantView):
         return self.json(result)
 
 
-class MealPlannerDayView(HomeAssistantView):
+class MealPlannerDayView(MealPlannerBaseView):
     """POST /api/meal_planner/plan/{date}  – set or update a day's meal."""
 
     url = "/api/meal_planner/plan/{day}"
     name = "api:meal_planner:day"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def post(self, request: web.Request, day: str) -> web.Response:
         try:
@@ -313,7 +346,9 @@ class MealPlannerDayView(HomeAssistantView):
         except ValueError:
             return self.json_message("invalid date format", status_code=400)
 
-        body = await request.json()
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
         plan_type = body.get("type")
         allowed_types = {TYPE_DISH, TYPE_EATING_OUT, TYPE_ORDER, TYPE_NOTHING, TYPE_CUSTOM}
         if plan_type not in allowed_types:
@@ -321,60 +356,38 @@ class MealPlannerDayView(HomeAssistantView):
 
         data = self.hass.data[DOMAIN]["data"]
         entry: dict[str, Any] = {"type": plan_type}
-        today_iso = date.today().isoformat()
-        is_past_or_today = day <= today_iso
-        # Check if this day already had a plan (prevents double-counting use_count on re-save)
-        previous_plan = data.get("meal_plan", {}).get(day)
+        dish_name = (body.get("dish_name") or "").strip()
+        if len(dish_name) > 200:
+            return self.json_message("dish_name too long (max 200 characters)", status_code=400)
 
         if plan_type == TYPE_DISH:
-            dish_id = body.get("dish_id")
-            dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+            dish = next((d for d in data["dishes"] if d["id"] == body.get("dish_id")), None)
             if dish is None:
                 return self.json_message("dish not found", status_code=404)
-            if is_past_or_today:
-                # Never let last_used regress when (re)planning for an older date
-                if not dish.get("last_used") or dish["last_used"] < day:
-                    dish["last_used"] = day
-                # Only increment use_count if this day wasn't already planned with this dish
-                prev_dish_id = previous_plan.get("dish_id") if previous_plan else None
-                if prev_dish_id != dish_id:
-                    dish["use_count"] = dish.get("use_count", 0) + 1
-            entry["dish_id"] = dish_id
+            entry["dish_id"] = dish["id"]
             entry["dish_name"] = dish["name"]
         elif plan_type == TYPE_CUSTOM:
-            entry["dish_name"] = (body.get("dish_name") or "").strip()
-            if not entry["dish_name"]:
+            if not dish_name:
                 return self.json_message("dish_name is required for custom type", status_code=400)
-            # Update last_used on matching dish in list (by name)
-            if is_past_or_today:
-                prev_name = (previous_plan.get("dish_name") or "").strip().lower() if previous_plan else ""
-                for d in data["dishes"]:
-                    if d["name"].lower() == entry["dish_name"].lower():
-                        if not d.get("last_used") or d["last_used"] < day:
-                            d["last_used"] = day
-                        if prev_name != d["name"].lower():
-                            d["use_count"] = d.get("use_count", 0) + 1
-                        entry["dish_id"] = d["id"]
-                        break
-            # Optionally add to dishes list
-            if body.get("add_to_list"):
-                if not any(d["name"].lower() == entry["dish_name"].lower() for d in data["dishes"]):
-                    new_dish = {
-                        "id": str(uuid.uuid4()),
-                        "name": entry["dish_name"],
-                        "last_used": day if is_past_or_today else None,
-                        "blocked_until": None,
-                        "use_count": 1 if is_past_or_today else 0,
-                        "created_at": today_iso,
-                    }
-                    data["dishes"].append(new_dish)
-                    entry["dish_id"] = new_dish["id"]
+            entry["dish_name"] = dish_name
+            # Optionally add to the dish list
+            if body.get("add_to_list") and not any(
+                d["name"].lower() == dish_name.lower() for d in data["dishes"]
+            ):
+                data["dishes"].append(_new_dish(dish_name))
+            # Link the entry to a matching dish so usage tracking finds it
+            match = next(
+                (d for d in data["dishes"] if d["name"].lower() == dish_name.lower()), None
+            )
+            if match:
+                entry["dish_id"] = match["id"]
         elif plan_type in (TYPE_EATING_OUT, TYPE_ORDER):
-            entry["dish_name"] = body.get("dish_name", "")
+            entry["dish_name"] = dish_name
         elif plan_type == TYPE_NOTHING:
             entry["dish_name"] = ""
 
         data["meal_plan"][day] = entry
+        _recompute_dish_usage(data)
         # Clear rejection session for this day
         self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
         await self.hass.data[DOMAIN]["store"].async_save(data)
@@ -384,13 +397,14 @@ class MealPlannerDayView(HomeAssistantView):
     async def delete(self, request: web.Request, day: str) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
         data["meal_plan"].pop(day, None)
+        _recompute_dish_usage(data)
         self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
         await self.hass.data[DOMAIN]["store"].async_save(data)
         _push_sensor_update(self.hass)
         return self.json_message("deleted")
 
 
-class MealPlannerMoveView(HomeAssistantView):
+class MealPlannerMoveView(MealPlannerBaseView):
     """POST /api/meal_planner/plan/{day}/move  – move or swap a day's meal.
 
     Body: { "target": "YYYY-MM-DD" }
@@ -399,18 +413,12 @@ class MealPlannerMoveView(HomeAssistantView):
       source day is cleared.
     - If the target day already has an entry, the two entries are swapped.
 
-    Cooking statistics (use_count / last_used) are intentionally left
-    untouched: a move/swap only relocates existing plan entries, it is not a
-    new cooking event. The midnight job keeps counting the dish planned for the
-    current day when that day actually arrives.
+    Usage counters are recomputed from the plan afterwards, so moves across
+    the today boundary are reflected immediately.
     """
 
     url = "/api/meal_planner/plan/{day}/move"
     name = "api:meal_planner:move"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def post(self, request: web.Request, day: str) -> web.Response:
         try:
@@ -418,7 +426,9 @@ class MealPlannerMoveView(HomeAssistantView):
         except ValueError:
             return self.json_message("invalid date format", status_code=400)
 
-        body = await request.json()
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
         target = body.get("target")
         try:
             date.fromisoformat(target)
@@ -445,6 +455,8 @@ class MealPlannerMoveView(HomeAssistantView):
             meal_plan[day] = dst_entry
             meal_plan[target] = src_entry
 
+        _recompute_dish_usage(data)
+
         # Rejection sessions are per-day planning aids — drop them for both days
         sessions = self.hass.data[DOMAIN]["rejected_sessions"]
         sessions.pop(day, None)
@@ -458,15 +470,11 @@ class MealPlannerMoveView(HomeAssistantView):
         })
 
 
-class MealPlannerSuggestView(HomeAssistantView):
+class MealPlannerSuggestView(MealPlannerBaseView):
     """GET /api/meal_planner/suggest/{date}  – get 3 suggestions for a day."""
 
     url = "/api/meal_planner/suggest/{day}"
     name = "api:meal_planner:suggest"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request, day: str) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
@@ -475,7 +483,7 @@ class MealPlannerSuggestView(HomeAssistantView):
         return self.json(suggestions)
 
 
-class MealPlannerRejectView(HomeAssistantView):
+class MealPlannerRejectView(MealPlannerBaseView):
     """POST /api/meal_planner/suggest/{date}/reject
 
     Body: { "dish_id": "...", "mode": "session" | "temporary" }
@@ -486,13 +494,11 @@ class MealPlannerRejectView(HomeAssistantView):
 
     url = "/api/meal_planner/suggest/{day}/reject"
     name = "api:meal_planner:reject"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def post(self, request: web.Request, day: str) -> web.Response:
-        body = await request.json()
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
         dish_id = body.get("dish_id")
         mode = body.get("mode", "session")  # "session" or "temporary"
 
@@ -525,15 +531,11 @@ class MealPlannerRejectView(HomeAssistantView):
         return self.json(suggestions)
 
 
-class MealPlannerUnblockView(HomeAssistantView):
+class MealPlannerUnblockView(MealPlannerBaseView):
     """POST /api/meal_planner/dishes/{dish_id}/unblock  – clear a temporary block."""
 
     url = "/api/meal_planner/dishes/{dish_id}/unblock"
     name = "api:meal_planner:unblock"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def post(self, request: web.Request, dish_id: str) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
@@ -545,15 +547,11 @@ class MealPlannerUnblockView(HomeAssistantView):
         return self.json(dish)
 
 
-class MealPlannerHistoryCSVView(HomeAssistantView):
+class MealPlannerHistoryCSVView(MealPlannerBaseView):
     """GET /api/meal_planner/history.csv  – download full meal history as CSV."""
 
     url = "/api/meal_planner/history.csv"
     name = "api:meal_planner:history_csv"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     _TYPE_LABELS: dict[str, dict[str, str]] = {
         "de": {
@@ -580,9 +578,12 @@ class MealPlannerHistoryCSVView(HomeAssistantView):
 
         rows = [self._CSV_HEADERS[lang]]
         for day_iso in sorted(meal_plan.keys()):
-            entry = meal_plan[day_iso]
-            dish_name = (entry.get("dish_name") or "").replace('"', '""')
-            typ = type_labels.get(entry.get("type", ""), entry.get("type", ""))
+            plan_entry = meal_plan[day_iso]
+            dish_name = (plan_entry.get("dish_name") or "").replace('"', '""')
+            # Guard against spreadsheet formula injection (leading =, +, -, @)
+            if dish_name[:1] in ("=", "+", "-", "@"):
+                dish_name = "'" + dish_name
+            typ = type_labels.get(plan_entry.get("type", ""), plan_entry.get("type", ""))
             rows.append(f'{day_iso},"{dish_name}",{typ}')
 
         csv_content = "\n".join(rows) + "\n"
@@ -593,12 +594,11 @@ class MealPlannerHistoryCSVView(HomeAssistantView):
         )
 
 
-class MealPlannerChefkochView(HomeAssistantView):
+class MealPlannerChefkochView(MealPlannerBaseView):
     """GET /api/meal_planner/surprise/chefkoch  – random recipe via Chefkoch JSON API."""
 
     url = "/api/meal_planner/surprise/chefkoch"
     name = "api:meal_planner:surprise_chefkoch"
-    requires_auth = False
 
     # Rotating search terms for variety
     _QUERIES = [
@@ -617,9 +617,6 @@ class MealPlannerChefkochView(HomeAssistantView):
         "Accept-Language": "de-DE,de;q=0.9",
         "Referer": "https://www.chefkoch.de/",
     }
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         session = async_get_clientsession(self.hass)
@@ -676,7 +673,7 @@ class MealPlannerChefkochView(HomeAssistantView):
         )
         site_url = meal.get("siteUrl") or meal.get("url") or ""
 
-        # Image: template has {size} and {formatId} placeholders
+        # Image: template URL carries a <format> placeholder
         img_template = meal.get("previewImageUrlTemplate") or meal.get("previewImageUrl") or ""
         _LOGGER.debug("Chefkoch image template: %s", img_template)
         image = (
@@ -699,15 +696,11 @@ class MealPlannerChefkochView(HomeAssistantView):
         })
 
 
-class MealPlannerSettingsView(HomeAssistantView):
+class MealPlannerSettingsView(MealPlannerBaseView):
     """Return integration options (e.g. language) to the frontend."""
 
     url = "/api/meal_planner/settings"
     name = "api:meal_planner:settings"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         entry: ConfigEntry = self.hass.data.get(DOMAIN, {}).get("entry")
@@ -715,15 +708,11 @@ class MealPlannerSettingsView(HomeAssistantView):
         return self.json({"lang": lang})
 
 
-class MealPlannerStatsView(HomeAssistantView):
+class MealPlannerStatsView(MealPlannerBaseView):
     """GET /api/meal_planner/stats – aggregated cooking statistics."""
 
     url = "/api/meal_planner/stats"
     name = "api:meal_planner:stats"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         data = self.hass.data[DOMAIN]["data"]
@@ -776,7 +765,7 @@ class MealPlannerStatsView(HomeAssistantView):
         })
 
 
-class MealPlannerHolidaysView(HomeAssistantView):
+class MealPlannerHolidaysView(MealPlannerBaseView):
     """GET /api/meal_planner/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD
 
     Returns {"YYYY-MM-DD": "Holiday Name", ...} for the configured country/state.
@@ -785,10 +774,6 @@ class MealPlannerHolidaysView(HomeAssistantView):
 
     url = "/api/meal_planner/holidays"
     name = "api:meal_planner:holidays"
-    requires_auth = False
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
 
     async def get(self, request: web.Request) -> web.Response:
         entry: ConfigEntry | None = self.hass.data.get(DOMAIN, {}).get("entry")
@@ -808,7 +793,7 @@ class MealPlannerHolidaysView(HomeAssistantView):
         except (TypeError, ValueError):
             return self.json({})
 
-        if to_date < from_date:
+        if to_date < from_date or (to_date - from_date).days > 366:
             return self.json({})
 
         # Compute holidays in executor — the holidays library does some I/O on first import

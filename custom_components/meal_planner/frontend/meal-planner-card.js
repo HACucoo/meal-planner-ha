@@ -81,8 +81,19 @@ class MealPlannerListCard extends HTMLElement {
       .join('|');
   }
 
+  connectedCallback() {
+    // Restore the refresh timer after the card is re-attached (e.g. tab switch)
+    if (this._initialized && !this._refreshTimer) {
+      this._render();
+      this._refreshTimer = setInterval(() => this._render(), 5 * 60 * 1000);
+    }
+  }
+
   disconnectedCallback() {
-    if (this._refreshTimer) clearInterval(this._refreshTimer);
+    if (this._refreshTimer) {
+      clearInterval(this._refreshTimer);
+      this._refreshTimer = null;
+    }
   }
 
   _strings() {
