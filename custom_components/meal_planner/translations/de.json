@@ -21,5 +21,12 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "today": { "name": "Heute" },
+      "tomorrow": { "name": "Morgen" },
+      "summary": { "name": "Zusammenfassung" }
+    }
   }
 }

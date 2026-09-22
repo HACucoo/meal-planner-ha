@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ from aiohttp import web
 from homeassistant.components.frontend import async_register_built_in_panel, async_remove_panel
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
@@ -41,7 +42,20 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 DATA_HTTP_REGISTERED = f"{DOMAIN}_http_registered"
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+@dataclass
+class MealPlannerRuntimeData:
+    """Runtime state of the Meal Planner config entry."""
+
+    store: Store
+    data: dict[str, Any]
+    rejected_sessions: dict[str, list[str]] = field(default_factory=dict)
+    sensors: list[Any] = field(default_factory=list)
+
+
+MealPlannerConfigEntry = ConfigEntry[MealPlannerRuntimeData]
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) -> bool:
     """Set up Meal Planner from a config entry."""
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     data = await store.async_load()
@@ -53,11 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Usage counters are derived from the plan — heals any drift from older versions
     _recompute_dish_usage(data)
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["store"] = store
-    hass.data[DOMAIN]["data"] = data
-    hass.data[DOMAIN]["rejected_sessions"] = {}
-    hass.data[DOMAIN]["entry"] = entry
+    runtime = MealPlannerRuntimeData(store=store, data=data)
+    entry.runtime_data = runtime
 
     # Static files + API views — register once per HA run (reload-safe)
     if not hass.data.get(DATA_HTTP_REGISTERED):
@@ -87,13 +98,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # At midnight the just-arrived day starts counting towards dish usage
     async def _midnight_refresh(_now: datetime) -> None:
-        _recompute_dish_usage(data)
-        _cleanup_rejected_sessions(hass)
-        await store.async_save(data)
-        _push_sensor_update(hass)
+        _recompute_dish_usage(runtime.data)
+        _cleanup_rejected_sessions(runtime.rejected_sessions)
+        await runtime.store.async_save(runtime.data)
+        _push_sensor_update(runtime)
 
-    hass.data[DOMAIN]["cancel_midnight"] = async_track_time_change(
-        hass, _midnight_refresh, hour=0, minute=0, second=30
+    entry.async_on_unload(
+        async_track_time_change(hass, _midnight_refresh, hour=0, minute=0, second=30)
     )
 
     # Apply option changes (language, holiday country/state) without an HA restart
@@ -113,25 +124,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    if cancel := hass.data.get(DOMAIN, {}).get("cancel_midnight"):
-        cancel()
-    await hass.config_entries.async_unload_platforms(entry, ["sensor"])
-    async_remove_panel(hass, PANEL_URL)
-    hass.data.pop(DOMAIN, None)
-    return True
+async def async_unload_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) -> bool:
+    """Unload a config entry.
+
+    The HTTP views stay registered for the lifetime of the HA process (routes
+    cannot be removed); they resolve the loaded entry per request and answer
+    503 while no entry is loaded.
+    """
+    unloaded = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    if unloaded:
+        async_remove_panel(hass, PANEL_URL)
+    return unloaded
 
 
-async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_options_updated(
+    hass: HomeAssistant, entry: MealPlannerConfigEntry
+) -> None:
     """Reload the integration when options change so they apply immediately."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _push_sensor_update(hass: HomeAssistant) -> None:
+def _push_sensor_update(runtime: MealPlannerRuntimeData) -> None:
     """Trigger a state refresh on all meal plan sensors."""
-    for sensor in hass.data.get(DOMAIN, {}).get("sensors", []):
-        sensor.async_write_ha_state()
+    for sensor in runtime.sensors:
+        # Skip entities that are not fully added yet — writing state would raise
+        if getattr(sensor, "hass", None) is not None:
+            sensor.async_write_ha_state()
 
 
 def _recompute_dish_usage(data: dict, today_iso: str | None = None) -> None:
@@ -164,9 +182,8 @@ def _recompute_dish_usage(data: dict, today_iso: str | None = None) -> None:
             dish["last_used"] = day_iso
 
 
-def _cleanup_rejected_sessions(hass: HomeAssistant) -> None:
+def _cleanup_rejected_sessions(sessions: dict[str, list[str]]) -> None:
     """Remove stale rejection sessions for past dates."""
-    sessions = hass.data.get(DOMAIN, {}).get("rejected_sessions")
     if not sessions:
         return
     today_iso = date.today().isoformat()
@@ -226,12 +243,33 @@ class MealPlannerBaseView(HomeAssistantView):
     requires_auth is False on purpose: the sidebar panel is an iframe whose
     fetch() calls carry no HA auth token. The API is intended for trusted
     local networks only.
+
+    Routes cannot be unregistered, so the views outlive any single config
+    entry. Every handler therefore resolves the currently loaded entry on
+    demand; while none is loaded the request fails with 503 instead of an
+    internal error.
     """
 
     requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
+
+    @property
+    def entry(self) -> MealPlannerConfigEntry | None:
+        """The loaded config entry, or None while the integration is unloaded."""
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            if entry.state is ConfigEntryState.LOADED:
+                return entry
+        return None
+
+    @property
+    def rt(self) -> MealPlannerRuntimeData:
+        """Runtime data of the loaded entry; raises 503 when unloaded."""
+        entry = self.entry
+        if entry is None:
+            raise web.HTTPServiceUnavailable(text="Meal Planner is not loaded")
+        return entry.runtime_data
 
     @staticmethod
     async def read_json(request: web.Request) -> dict | None:
@@ -251,7 +289,7 @@ class MealPlannerDishesView(MealPlannerBaseView):
     name = "api:meal_planner:dishes"
 
     async def get(self, request: web.Request) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         return self.json(sorted(data["dishes"], key=lambda d: d["name"].lower()))
 
     async def post(self, request: web.Request) -> web.Response:
@@ -264,7 +302,7 @@ class MealPlannerDishesView(MealPlannerBaseView):
         if len(name) > 200:
             return self.json_message("name too long (max 200 characters)", status_code=400)
 
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         # Avoid duplicates (case-insensitive)
         if any(d["name"].lower() == name.lower() for d in data["dishes"]):
             return self.json_message("dish already exists", status_code=409)
@@ -273,7 +311,7 @@ class MealPlannerDishesView(MealPlannerBaseView):
         data["dishes"].append(dish)
         # A re-added dish regains its history from matching plan entries
         _recompute_dish_usage(data)
-        await self.hass.data[DOMAIN]["store"].async_save(data)
+        await self.rt.store.async_save(data)
         return self.json(dish, status_code=201)
 
 
@@ -284,12 +322,12 @@ class MealPlannerDishView(MealPlannerBaseView):
     name = "api:meal_planner:dish"
 
     async def delete(self, request: web.Request, dish_id: str) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         before = len(data["dishes"])
         data["dishes"] = [d for d in data["dishes"] if d["id"] != dish_id]
         if len(data["dishes"]) == before:
             return self.json_message("not found", status_code=404)
-        await self.hass.data[DOMAIN]["store"].async_save(data)
+        await self.rt.store.async_save(data)
         return self.json_message("deleted")
 
 
@@ -326,7 +364,7 @@ class MealPlannerPlanView(MealPlannerBaseView):
             monday = today - timedelta(days=today.weekday())
             days = [monday + timedelta(days=i) for i in range(7)]
 
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         result = {}
         for d in days:
             ds = d.isoformat()
@@ -354,7 +392,7 @@ class MealPlannerDayView(MealPlannerBaseView):
         if plan_type not in allowed_types:
             return self.json_message(f"type must be one of {allowed_types}", status_code=400)
 
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         entry: dict[str, Any] = {"type": plan_type}
         dish_name = (body.get("dish_name") or "").strip()
         if len(dish_name) > 200:
@@ -389,18 +427,18 @@ class MealPlannerDayView(MealPlannerBaseView):
         data["meal_plan"][day] = entry
         _recompute_dish_usage(data)
         # Clear rejection session for this day
-        self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
-        await self.hass.data[DOMAIN]["store"].async_save(data)
-        _push_sensor_update(self.hass)
+        self.rt.rejected_sessions.pop(day, None)
+        await self.rt.store.async_save(data)
+        _push_sensor_update(self.rt)
         return self.json(entry, status_code=201)
 
     async def delete(self, request: web.Request, day: str) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         data["meal_plan"].pop(day, None)
         _recompute_dish_usage(data)
-        self.hass.data[DOMAIN]["rejected_sessions"].pop(day, None)
-        await self.hass.data[DOMAIN]["store"].async_save(data)
-        _push_sensor_update(self.hass)
+        self.rt.rejected_sessions.pop(day, None)
+        await self.rt.store.async_save(data)
+        _push_sensor_update(self.rt)
         return self.json_message("deleted")
 
 
@@ -438,7 +476,7 @@ class MealPlannerMoveView(MealPlannerBaseView):
         if target == day:
             return self.json_message("target must differ from source", status_code=400)
 
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         meal_plan = data.setdefault("meal_plan", {})
 
         src_entry = meal_plan.get(day)
@@ -458,12 +496,12 @@ class MealPlannerMoveView(MealPlannerBaseView):
         _recompute_dish_usage(data)
 
         # Rejection sessions are per-day planning aids — drop them for both days
-        sessions = self.hass.data[DOMAIN]["rejected_sessions"]
+        sessions = self.rt.rejected_sessions
         sessions.pop(day, None)
         sessions.pop(target, None)
 
-        await self.hass.data[DOMAIN]["store"].async_save(data)
-        _push_sensor_update(self.hass)
+        await self.rt.store.async_save(data)
+        _push_sensor_update(self.rt)
         return self.json({
             "source": {"date": day, "entry": meal_plan.get(day)},
             "target": {"date": target, "entry": meal_plan.get(target)},
@@ -477,8 +515,8 @@ class MealPlannerSuggestView(MealPlannerBaseView):
     name = "api:meal_planner:suggest"
 
     async def get(self, request: web.Request, day: str) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
-        rejected = self.hass.data[DOMAIN]["rejected_sessions"].get(day, [])
+        data = self.rt.data
+        rejected = self.rt.rejected_sessions.get(day, [])
         suggestions = _get_suggestions(data, day, rejected)
         return self.json(suggestions)
 
@@ -507,8 +545,8 @@ class MealPlannerRejectView(MealPlannerBaseView):
         if mode not in ("session", "temporary"):
             return self.json_message("mode must be 'session' or 'temporary'", status_code=400)
 
-        data = self.hass.data[DOMAIN]["data"]
-        sessions = self.hass.data[DOMAIN]["rejected_sessions"]
+        data = self.rt.data
+        sessions = self.rt.rejected_sessions
 
         if mode == "temporary":
             dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
@@ -516,7 +554,7 @@ class MealPlannerRejectView(MealPlannerBaseView):
                 return self.json_message("dish not found", status_code=404)
             blocked_until = (date.today() + timedelta(days=14)).isoformat()
             dish["blocked_until"] = blocked_until
-            await self.hass.data[DOMAIN]["store"].async_save(data)
+            await self.rt.store.async_save(data)
             # Also add to session so it disappears immediately
             sessions.setdefault(day, [])
             if dish_id not in sessions[day]:
@@ -538,12 +576,12 @@ class MealPlannerUnblockView(MealPlannerBaseView):
     name = "api:meal_planner:unblock"
 
     async def post(self, request: web.Request, dish_id: str) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
         if dish is None:
             return self.json_message("not found", status_code=404)
         dish["blocked_until"] = None
-        await self.hass.data[DOMAIN]["store"].async_save(data)
+        await self.rt.store.async_save(data)
         return self.json(dish)
 
 
@@ -569,11 +607,11 @@ class MealPlannerHistoryCSVView(MealPlannerBaseView):
     }
 
     async def get(self, request: web.Request) -> web.Response:
-        config_entry = self.hass.data.get(DOMAIN, {}).get("entry")
+        config_entry = self.entry
         lang = config_entry.options.get("lang", "de") if config_entry else "de"
         type_labels = self._TYPE_LABELS.get(lang, self._TYPE_LABELS["de"])
 
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         meal_plan = data.get("meal_plan", {})
 
         rows = [self._CSV_HEADERS[lang]]
@@ -703,7 +741,7 @@ class MealPlannerSettingsView(MealPlannerBaseView):
     name = "api:meal_planner:settings"
 
     async def get(self, request: web.Request) -> web.Response:
-        entry: ConfigEntry = self.hass.data.get(DOMAIN, {}).get("entry")
+        entry = self.entry
         lang = entry.options.get("lang", "de") if entry else "de"
         return self.json({"lang": lang})
 
@@ -715,7 +753,7 @@ class MealPlannerStatsView(MealPlannerBaseView):
     name = "api:meal_planner:stats"
 
     async def get(self, request: web.Request) -> web.Response:
-        data = self.hass.data[DOMAIN]["data"]
+        data = self.rt.data
         meal_plan = data.get("meal_plan", {})
 
         dish_counts: dict[str, int] = {}
@@ -776,7 +814,7 @@ class MealPlannerHolidaysView(MealPlannerBaseView):
     name = "api:meal_planner:holidays"
 
     async def get(self, request: web.Request) -> web.Response:
-        entry: ConfigEntry | None = self.hass.data.get(DOMAIN, {}).get("entry")
+        entry = self.entry
         if entry is None:
             return self.json({})
 

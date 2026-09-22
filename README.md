@@ -72,14 +72,17 @@ Every dish stores a `last_used` date. The 10 dishes cooked longest ago (never-co
 
 ## Sensors
 
-After setup, two text sensors are available:
+After setup, three text sensors are available, grouped under a **Meal Planner** device:
 
 | Entity | Value |
 |---|---|
-| `sensor.meal_planner_heute` | Today's planned meal (dish name, or "Auswärts" / "Bestellen" / "Kein Kochen" / "Nicht geplant") |
-| `sensor.meal_planner_morgen` | Tomorrow's planned meal (same format) |
+| Today | Today's planned meal (dish name, or "Eating out" / "Order" / "No cooking" / "Not planned") |
+| Tomorrow | Tomorrow's planned meal (same format) |
+| Summary | One spoken-style sentence covering today and tomorrow, handy for TTS |
 
-These update instantly whenever a day is saved or cleared in the planner. Use them in automations, dashboards, or display cards.
+These update instantly whenever a day is saved, moved, or cleared in the planner. Use them in automations, dashboards, or display cards.
+
+The entity IDs are generated from the Home Assistant interface language when the integration is first set up, so a German instance gets `sensor.meal_planner_heute` and an English one `sensor.meal_planner_today`. Existing IDs never change on update. The sensor **state** text follows the language chosen in the integration options.
 
 ---
 

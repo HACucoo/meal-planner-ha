@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "sensor": {
+      "today": { "default": "mdi:food" },
+      "tomorrow": { "default": "mdi:food" },
+      "summary": { "default": "mdi:silverware-fork-knife" }
+    }
+  }
+}

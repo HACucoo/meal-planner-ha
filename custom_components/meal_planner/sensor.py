@@ -4,21 +4,21 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from . import MealPlannerConfigEntry
+from .const import DOMAIN, PANEL_TITLE
 
-_I18N = {
+# State texts are *data*, so they follow the integration's language option.
+# Entity names are translated by Home Assistant itself (strings.json).
+_STATE_I18N: dict[str, dict[str, str]] = {
     "de": {
         "type_eating_out": "Auswärts",
         "type_order": "Bestellen",
         "type_nothing": "Kein Kochen",
         "not_planned": "Nicht geplant",
-        "name_today": "Meal Planner Heute",
-        "name_tomorrow": "Meal Planner Morgen",
-        "name_summary": "Meal Planner Zusammenfassung",
         "summary": "Heute gibt es {today}. Morgen gibt's {tomorrow}.",
     },
     "en": {
@@ -26,100 +26,93 @@ _I18N = {
         "type_order": "Ordering",
         "type_nothing": "No cooking",
         "not_planned": "Not planned",
-        "name_today": "Meal Planner Today",
-        "name_tomorrow": "Meal Planner Tomorrow",
-        "name_summary": "Meal Planner Summary",
         "summary": "Today we're having {today}. Tomorrow it's {tomorrow}.",
     },
 }
 
 
-def _get_lang(hass: HomeAssistant) -> str:
-    entry = hass.data.get(DOMAIN, {}).get("entry")
-    return entry.options.get("lang", "de") if entry else "de"
+def _strings(entry: MealPlannerConfigEntry) -> dict[str, str]:
+    """Return the state-text table for the configured language."""
+    return _STATE_I18N.get(entry.options.get("lang", "de"), _STATE_I18N["de"])
 
 
-def _strings(hass: HomeAssistant) -> dict:
-    return _I18N.get(_get_lang(hass), _I18N["de"])
+def _meal_label(entry: MealPlannerConfigEntry, offset: int) -> str:
+    """Return the meal label for today+offset."""
+    strings = _strings(entry)
+    target = (date.today() + timedelta(days=offset)).isoformat()
+    plan_entry = entry.runtime_data.data.get("meal_plan", {}).get(target)
+    if not plan_entry:
+        return strings["not_planned"]
+    if dish_name := plan_entry.get("dish_name", ""):
+        return dish_name
+    return strings.get(f"type_{plan_entry.get('type', '')}", strings["not_planned"])
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: MealPlannerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Meal Planner sensors."""
     entities: list[SensorEntity] = [
-        MealSensor(hass, "today",    0),
-        MealSensor(hass, "tomorrow", 1),
-        MealSummarySensor(hass),
+        MealSensor(entry, "today", 0),
+        MealSensor(entry, "tomorrow", 1),
+        MealSummarySensor(entry),
     ]
-    hass.data[DOMAIN]["sensors"] = entities
+    entry.runtime_data.sensors = entities
     async_add_entities(entities)
 
 
-def _meal_label(hass: HomeAssistant, data: dict, offset: int) -> str:
-    """Return the meal label for today+offset."""
-    S = _strings(hass)
-    target = (date.today() + timedelta(days=offset)).isoformat()
-    entry = data.get("meal_plan", {}).get(target)
-    if not entry:
-        return S["not_planned"]
-    dish_name = entry.get("dish_name", "")
-    if dish_name:
-        return dish_name
-    type_key = f"type_{entry.get('type', '')}"
-    return S.get(type_key, S["not_planned"])
+class MealPlannerSensorBase(SensorEntity):
+    """Common wiring: entity naming, device grouping, push updates."""
 
-
-class MealSensor(SensorEntity):
-    """Text sensor showing today's or tomorrow's planned meal."""
-
-    _attr_icon = "mdi:food"
+    _attr_has_entity_name = True
     _attr_should_poll = False  # pushed via async_write_ha_state()
 
+    def __init__(self, entry: MealPlannerConfigEntry) -> None:
+        """Link the entity to the Meal Planner service device."""
+        self._entry = entry
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=PANEL_TITLE,
+            manufacturer="HACucoo",
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+
+class MealSensor(MealPlannerSensorBase):
+    """Text sensor showing today's or tomorrow's planned meal."""
+
     def __init__(
-        self,
-        hass: HomeAssistant,
-        sensor_id: str,
-        day_offset: int,
+        self, entry: MealPlannerConfigEntry, sensor_id: str, day_offset: int
     ) -> None:
-        self.hass = hass
+        """Initialise one day sensor."""
+        super().__init__(entry)
+        # unique_id is unchanged on purpose: existing entity_ids survive the upgrade
         self._attr_unique_id = f"{DOMAIN}_{sensor_id}"
-        self._sensor_id = sensor_id
+        self._attr_translation_key = sensor_id
         self._day_offset = day_offset
 
     @property
-    def name(self) -> str:
-        S = _strings(self.hass)
-        key = "name_today" if self._sensor_id == "today" else "name_tomorrow"
-        return S[key]
-
-    @property
     def native_value(self) -> str:
-        """Return the meal name for the target day."""
-        data = self.hass.data.get(DOMAIN, {}).get("data", {})
-        return _meal_label(self.hass, data, self._day_offset)
+        """Return the meal planned for this sensor's day."""
+        return _meal_label(self._entry, self._day_offset)
 
 
-class MealSummarySensor(SensorEntity):
+class MealSummarySensor(MealPlannerSensorBase):
     """Single sensor with a full spoken summary."""
 
-    _attr_icon = "mdi:silverware-fork-knife"
-    _attr_should_poll = False
-    _attr_unique_id = f"{DOMAIN}_summary"
+    _attr_translation_key = "summary"
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
-
-    @property
-    def name(self) -> str:
-        return _strings(self.hass)["name_summary"]
+    def __init__(self, entry: MealPlannerConfigEntry) -> None:
+        """Initialise the summary sensor."""
+        super().__init__(entry)
+        self._attr_unique_id = f"{DOMAIN}_summary"
 
     @property
     def native_value(self) -> str:
-        S = _strings(self.hass)
-        data = self.hass.data.get(DOMAIN, {}).get("data", {})
-        today = _meal_label(self.hass, data, 0)
-        tomorrow = _meal_label(self.hass, data, 1)
-        return S["summary"].format(today=today, tomorrow=tomorrow)
+        """Return a spoken-style summary of today and tomorrow."""
+        return _strings(self._entry)["summary"].format(
+            today=_meal_label(self._entry, 0),
+            tomorrow=_meal_label(self._entry, 1),
+        )

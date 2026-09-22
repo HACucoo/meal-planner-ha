@@ -2,24 +2,31 @@
   "config": {
     "step": {
       "user": {
-        "title": "Meal Planner einrichten",
-        "description": "Richtet das Meal Planner Dashboard ein. Nach der Einrichtung erscheint ein neuer Menüpunkt in der Seitenleiste."
+        "title": "Set up Meal Planner",
+        "description": "Sets up the Meal Planner dashboard. After setup, a new entry will appear in the sidebar."
       }
     },
     "abort": {
-      "single_instance_allowed": "Meal Planner ist bereits eingerichtet."
+      "single_instance_allowed": "Meal Planner is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Meal Planner Einstellungen",
+        "title": "Meal Planner Settings",
         "data": {
-          "lang": "Sprache",
-          "holiday_country": "Land (für Feiertagsmarkierung)",
-          "holiday_state": "Bundesland (nur für Deutschland)"
+          "lang": "Language",
+          "holiday_country": "Country (for holiday markers)",
+          "holiday_state": "Federal state (Germany only)"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "today": { "name": "Today" },
+      "tomorrow": { "name": "Tomorrow" },
+      "summary": { "name": "Summary" }
     }
   }
 }

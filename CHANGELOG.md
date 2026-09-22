@@ -3,6 +3,32 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-09-22
+
+Alignment with the Home Assistant integration standards (Quality Scale).
+Existing entity IDs are unchanged, so dashboards and automations keep working.
+
+### Added
+- The three sensors are now grouped under a **Meal Planner** service device
+  instead of floating around without one.
+- Entity names and icons are provided through Home Assistant's own translation
+  and icon files, so they follow the HA interface language.
+
+### Changed
+- Runtime state moved to `ConfigEntry.runtime_data`; the integration no longer
+  writes to the shared `hass.data` dictionary.
+- `strings.json` is now the English source file, as Home Assistant expects.
+  German text lives in `translations/de.json` only.
+- Options flow and sensor entities updated to current Home Assistant patterns
+  (no manually stored config entry, no manual `hass` assignment).
+
+### Fixed
+- The API answers **503** while the integration is unloaded or being reloaded.
+  Previously those requests hit a missing data structure and failed with an
+  internal error, which could happen during an options change.
+- A state update can no longer be pushed to a sensor that has not finished
+  being added.
+
 ## [1.5.0] - 2026-06-10
 
 ### Changed
@@ -96,6 +122,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   random recipes, summary sensors, Lovelace list card, CSV history export and
   DE / EN localisation.
 
+[1.6.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.6.0
 [1.5.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.5.0
 [1.4.1]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.1
 [1.4.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.0
