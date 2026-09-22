@@ -71,6 +71,7 @@ Photos are optional. A dish without one looks exactly as before, so you can keep
 - Pictures are scaled down **in the browser** before upload (longest edge 1000 px, JPEG), so a phone photo arrives as a few dozen kilobytes and no image library is needed on the Home Assistant side.
 - They are stored in `config/meal_planner_images/` and are therefore included in Home Assistant backups.
 - A photo belongs to its dish. Renaming a dish in **bulk edit** counts as deleting one dish and creating another, so the photo is lost. Renaming the dish row itself keeps it.
+- Accepting a **Surprise me** or **Chefkoch** recipe takes its picture along automatically. A photo you set yourself is never overwritten by this, and only those two recipe sources may be downloaded from.
 
 ---
 

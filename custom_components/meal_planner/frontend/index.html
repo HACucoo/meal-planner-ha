@@ -1429,7 +1429,23 @@
         },
         async acceptSurprise() {
           if (!this.surpriseResult) return;
-          await this.saveDay({ type: 'custom', dish_name: this.surpriseResult.name, add_to_list: true });
+          // Grab both now: saveDay closes the modal and clears surpriseResult
+          const { name, thumb } = this.surpriseResult;
+          const entry = await this.saveDay({ type: 'custom', dish_name: name, add_to_list: true });
+          if (!entry || !entry.dish_id || !thumb) return;
+          try {
+            // Let the server pull the recipe picture; keep_existing protects
+            // a photo the user set themselves on a dish of the same name
+            await fetch(`${API}/dishes/${entry.dish_id}/image/fetch`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: thumb, keep_existing: true }),
+            });
+            await this.loadDishes();
+          } catch(e) {
+            // The meal is planned either way — a missing photo is not worth an alert
+            console.warn('Could not adopt the recipe photo', e);
+          }
         },
 
         async saveDay(payload) {
@@ -1444,8 +1460,10 @@
             this.plan[this.activeDay.iso] = entry;
             this.closeModal();
             this.advanceToNextUnplanned();
+            return entry;
           } catch(e) {
             alert(this.S.errorPrefix + e.message);
+            return null;
           }
         },
 

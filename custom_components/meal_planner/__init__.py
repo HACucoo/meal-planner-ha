@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import random
 
@@ -24,6 +25,7 @@ from .const import (
     DOMAIN,
     IMAGE_CONTENT_TYPES,
     IMAGE_DIR_NAME,
+    IMAGE_FETCH_ALLOWED_HOSTS,
     IMAGE_URL_BASE,
     MAX_IMAGE_BYTES,
     PANEL_ICON,
@@ -87,6 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) 
             MealPlannerDishesView,
             MealPlannerDishView,
             MealPlannerDishImageView,
+            MealPlannerDishImageFetchView,
             MealPlannerPlanView,
             MealPlannerDayView,
             MealPlannerMoveView,
@@ -234,6 +237,32 @@ def _store_image(directory: Path, filename: str, payload: bytes, old: str | None
     (directory / filename).write_bytes(payload)
     if old and old != filename:
         _remove_image(directory, old)
+
+
+def _looks_like_image(payload: bytes, extension: str) -> bool:
+    """Check the file signature, so a wrong Content-Type cannot smuggle junk in."""
+    if extension == ".webp":
+        return payload[:4] == b"RIFF" and payload[8:12] == b"WEBP"
+    if extension == ".png":
+        return payload.startswith(b"\x89PNG\r\n\x1a\n")
+    if extension == ".jpg":
+        return payload.startswith(b"\xff\xd8\xff")
+    return False
+
+
+def _fetch_host_allowed(url: str) -> bool:
+    """Only allow the recipe sources the surprise feature actually uses."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return any(
+        host == allowed or host.endswith(f".{allowed}")
+        for allowed in IMAGE_FETCH_ALLOWED_HOSTS
+    )
 
 
 def _remove_image(directory: Path, filename: str | None) -> None:
@@ -412,6 +441,10 @@ class MealPlannerDishImageView(MealPlannerBaseView):
                 f"image too large (max {MAX_IMAGE_BYTES // 1024 // 1024} MB)",
                 status_code=413,
             )
+        if not _looks_like_image(payload, extension):
+            return self.json_message(
+                "payload does not look like an image", status_code=400
+            )
 
         # Random suffix busts the browser cache when a photo is replaced
         filename = f"{dish_id}_{uuid.uuid4().hex[:8]}{extension}"
@@ -433,6 +466,72 @@ class MealPlannerDishImageView(MealPlannerBaseView):
                 _remove_image, _image_dir(self.hass), image
             )
         dish["image"] = None
+        await self.rt.store.async_save(data)
+        return self.json(dish)
+
+
+class MealPlannerDishImageFetchView(MealPlannerBaseView):
+    """POST /api/meal_planner/dishes/{dish_id}/image/fetch – adopt a recipe photo.
+
+    Body: { "url": "https://…", "keep_existing": true }
+
+    Used by the surprise-me flow, so an accepted recipe brings its picture
+    along. Only the recipe sources in IMAGE_FETCH_ALLOWED_HOSTS can be
+    downloaded: the API is unauthenticated, so an open URL fetcher would let
+    anyone probe the network from inside Home Assistant.
+    """
+
+    url = "/api/meal_planner/dishes/{dish_id}/image/fetch"
+    name = "api:meal_planner:dish_image_fetch"
+
+    async def post(self, request: web.Request, dish_id: str) -> web.Response:
+        data = self.rt.data
+        dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+        if dish is None:
+            return self.json_message("dish not found", status_code=404)
+
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
+
+        # Never silently replace a photo the user picked themselves
+        if body.get("keep_existing") and dish.get("image"):
+            return self.json(dish)
+
+        source = (body.get("url") or "").strip()
+        if not _fetch_host_allowed(source):
+            return self.json_message("url host not allowed", status_code=400)
+
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.get(source, timeout=15) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Recipe photo fetch returned %s", resp.status)
+                    return self.json_message(
+                        "could not download image", status_code=502
+                    )
+                extension = IMAGE_CONTENT_TYPES.get((resp.content_type or "").lower())
+                if extension is None:
+                    return self.json_message("url is not an image", status_code=415)
+                payload = b""
+                async for chunk in resp.content.iter_chunked(64 * 1024):
+                    payload += chunk
+                    if len(payload) > MAX_IMAGE_BYTES:
+                        return self.json_message("image too large", status_code=413)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Recipe photo fetch failed: %s", err)
+            return self.json_message("could not download image", status_code=502)
+
+        if not payload or not _looks_like_image(payload, extension):
+            return self.json_message(
+                "downloaded file is not a valid image", status_code=415
+            )
+
+        filename = f"{dish_id}_{uuid.uuid4().hex[:8]}{extension}"
+        await self.hass.async_add_executor_job(
+            _store_image, _image_dir(self.hass), filename, payload, dish.get("image")
+        )
+        dish["image"] = filename
         await self.rt.store.async_save(data)
         return self.json(dish)
 

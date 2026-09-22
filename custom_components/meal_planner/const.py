@@ -64,6 +64,14 @@ IMAGE_CONTENT_TYPES = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+# Hosts the server may download a recipe picture from. Keeping this tight
+# matters because the API is unauthenticated: without it, the endpoint would
+# let anyone make Home Assistant fetch arbitrary URLs.
+IMAGE_FETCH_ALLOWED_HOSTS = (
+    "themealdb.com",
+    "chefkoch.de",
+    "chefkoch-cdn.de",
+)
 
 # Config option keys
 CONF_LANG = "lang"
