@@ -68,6 +68,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 
 Photos are optional. A dish without one looks exactly as before, so you can keep the list as plain text.
 
+- Picking a file opens a **crop dialog**, the same idea as Home Assistant's own user-picture upload: drag the frame, pinch or scroll to zoom, rotate, and switch between a square and a free crop. If the cropper cannot be loaded, the photo is uploaded uncropped instead of blocking you.
 - Pictures are scaled down **in the browser** before upload (longest edge 1000 px, JPEG), so a phone photo arrives as a few dozen kilobytes and no image library is needed on the Home Assistant side.
 - They are stored in `config/meal_planner_images/` and are therefore included in Home Assistant backups.
 - A photo belongs to its dish. Renaming a dish in **bulk edit** counts as deleting one dish and creating another, so the photo is lost. Renaming the dish row itself keeps it.

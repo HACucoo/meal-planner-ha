@@ -6,6 +6,10 @@
   <title>Meal Planner</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Crop dialog for dish photos. If it fails to load, the upload still works,
+       it just skips the cropping step. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.3/cropper.min.css" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.3/cropper.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
 
@@ -182,6 +186,22 @@
       transition: border-color 0.12s;
     }
     .dish-thumb:hover { border-color: var(--mp-text-muted); }
+
+    /* Crop dialog stage */
+    .crop-stage {
+      width: 100%;
+      height: 46vh;
+      min-height: 220px;
+      background: var(--mp-surface-3);
+      border: 1px solid var(--mp-border);
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+    .crop-stage img { display: block; max-width: 100%; }
+    /* Cropper's own chrome, nudged towards the HA theme */
+    .cropper-view-box, .cropper-face { border-radius: 0.25rem; }
+    .cropper-line, .cropper-point { background-color: var(--mp-primary); }
+    .cropper-view-box { outline-color: var(--mp-primary); }
 
     /* Day card theme variants */
     .mp-day-default { background: var(--mp-surface); border: 1px solid var(--mp-border); }
@@ -676,6 +696,54 @@
   </div>
 
   <!-- ================================================================
+       PHOTO CROP MODAL
+  ================================================================ -->
+  <div class="modal-overlay" x-show="showCropper" x-transition style="z-index:70">
+    <div class="modal" style="max-width:660px">
+      <div class="flex items-start justify-between mb-1">
+        <div class="min-w-0">
+          <h2 class="text-lg font-bold text-white leading-tight" x-text="S.cropTitle"></h2>
+          <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="pendingImageDish?.name"></p>
+        </div>
+        <button class="text-gray-500 hover:text-white text-2xl leading-none ml-3 shrink-0" @click="cancelCrop()">×</button>
+      </div>
+      <p class="text-xs text-gray-500 mb-3" x-text="S.cropHint"></p>
+
+      <div class="crop-stage">
+        <img x-ref="cropImage" alt="" />
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <button
+          class="btn btn-neutral text-xs"
+          :class="cropAspect !== null ? 'ring-2 ring-blue-400' : ''"
+          @click="setCropAspect(1)"
+          x-text="S.cropSquare"
+        ></button>
+        <button
+          class="btn btn-neutral text-xs"
+          :class="cropAspect === null ? 'ring-2 ring-blue-400' : ''"
+          @click="setCropAspect(null)"
+          x-text="S.cropFree"
+        ></button>
+        <span class="flex-1"></span>
+        <button class="btn btn-neutral text-xs" @click="rotateCrop(-90)" :title="S.cropRotateLeft">⟲</button>
+        <button class="btn btn-neutral text-xs" @click="rotateCrop(90)" :title="S.cropRotateRight">⟳</button>
+      </div>
+
+      <div class="flex gap-2 mt-3">
+        <button
+          class="btn btn-primary flex-1"
+          @click="applyCrop()"
+          :disabled="cropBusy"
+          x-text="cropBusy ? S.cropSaving : S.cropSave"
+        ></button>
+        <button class="btn btn-neutral" @click="cancelCrop()" x-text="S.cancel"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
        DISH MANAGER MODAL
   ================================================================ -->
   <div class="modal-overlay" x-show="showDishManager" x-transition @click.self="showDishManager = false">
@@ -975,6 +1043,14 @@
       addPhoto: 'Foto hinzufügen',
       changePhoto: 'Foto ändern',
       removePhoto: 'Foto entfernen',
+      cropTitle: 'Ausschnitt wählen',
+      cropHint: 'Rahmen ziehen zum Verschieben, Ecken zum Vergrößern, Mausrad oder zwei Finger zum Zoomen.',
+      cropSquare: 'Quadratisch',
+      cropFree: 'Frei',
+      cropRotateLeft: 'Nach links drehen',
+      cropRotateRight: 'Nach rechts drehen',
+      cropSave: 'Zuschneiden & speichern',
+      cropSaving: 'Wird gespeichert…',
       imageEncodeFailed: 'Bild konnte nicht verarbeitet werden.',
       imageReadFailed: 'Datei ist kein lesbares Bild.',
       bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten. Fotos hängen am Gericht: Wird ein Name hier geändert, gilt das als neues Gericht und das Foto geht verloren.',
@@ -1083,6 +1159,14 @@
       addPhoto: 'Add photo',
       changePhoto: 'Change photo',
       removePhoto: 'Remove photo',
+      cropTitle: 'Choose the crop',
+      cropHint: 'Drag the frame to move it, the corners to resize, scroll or pinch to zoom.',
+      cropSquare: 'Square',
+      cropFree: 'Free',
+      cropRotateLeft: 'Rotate left',
+      cropRotateRight: 'Rotate right',
+      cropSave: 'Crop & save',
+      cropSaving: 'Saving…',
       imageEncodeFailed: 'Could not process the image.',
       imageReadFailed: 'That file is not a readable image.',
       bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved. Photos belong to a dish: renaming one here counts as a new dish and loses its photo.',
@@ -1190,6 +1274,11 @@
         allDishes: [],
         dishIndex: { byId: {}, byName: {} },
         pendingImageDish: null,
+        showCropper: false,
+        cropAspect: 1,
+        cropBusy: false,
+        cropper: null,
+        cropObjectUrl: null,
         newDishName: '',
         dishManagerTab: 'list',
         bulkText: '',
@@ -1352,7 +1441,8 @@
         },
         handleEscape() {
           // Close the topmost layer first
-          if (this.showMove) this.showMove = false;
+          if (this.showCropper) this.cancelCrop();
+          else if (this.showMove) this.showMove = false;
           else if (this.modalOpen) this.closeModal();
           else if (this.showDishManager) this.showDishManager = false;
           else if (this.showStats) this.showStats = false;
@@ -1683,21 +1773,123 @@
         },
         async onDishImageSelected(event) {
           const file = event.target.files && event.target.files[0];
-          const dish = this.pendingImageDish;
           event.target.value = '';
-          this.pendingImageDish = null;
-          if (!file || !dish) return;
+          if (!file || !this.pendingImageDish) {
+            this.pendingImageDish = null;
+            return;
+          }
+          if (typeof window.Cropper === 'undefined') {
+            // Cropper did not load — upload uncropped rather than blocking the user
+            const dish = this.pendingImageDish;
+            this.pendingImageDish = null;
+            try {
+              await this.uploadDishImage(dish, await this.downscaleImage(file, 1000, 0.82));
+            } catch(e) {
+              alert(this.S.errorPrefix + (e.message || e));
+            }
+            return;
+          }
+          this.openCropper(file);
+        },
+        async uploadDishImage(dish, blob) {
+          const resp = await fetch(`${API}/dishes/${dish.id}/image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg' },
+            body: blob,
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          await this.loadDishes();
+        },
+
+        // ── Crop dialog ──
+        openCropper(file) {
+          this.cropBusy = false;
+          this.cropAspect = 1;
+          this.destroyCropper();
+          if (this.cropObjectUrl) URL.revokeObjectURL(this.cropObjectUrl);
+          this.cropObjectUrl = URL.createObjectURL(file);
+          this.showCropper = true;
+          // Deliberately not $nextTick: Alpine holds those callbacks while an
+          // x-transition runs, and that transition depends on requestAnimationFrame,
+          // which stalls in a background tab. startCropper retries until laid out.
+          setTimeout(() => this.startCropper(0), 0);
+        },
+        startCropper(attempt) {
+          const img = this.$refs.cropImage;
+          if (!img || !this.cropObjectUrl) {
+            // The modal may not be laid out yet — retry rather than fail silently
+            if (attempt < 20) {
+              setTimeout(() => this.startCropper(attempt + 1), 50);
+            } else {
+              console.error('Crop dialog: image element never became available');
+              alert(this.S.errorPrefix + this.S.imageReadFailed);
+              this.cancelCrop();
+            }
+            return;
+          }
           try {
-            const blob = await this.downscaleImage(file, 1000, 0.82);
-            const resp = await fetch(`${API}/dishes/${dish.id}/image`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'image/jpeg' },
-              body: blob,
+            img.src = this.cropObjectUrl;
+            this.destroyCropper();
+            this.cropper = new Cropper(img, {
+              aspectRatio: this.cropAspect,
+              viewMode: 1,
+              autoCropArea: 1,
+              background: false,
+              responsive: true,
+              checkOrientation: true,  // respect the EXIF rotation of phone photos
             });
-            if (!resp.ok) throw new Error(await resp.text());
-            await this.loadDishes();
+          } catch(e) {
+            console.error('Crop dialog failed to start', e);
+            alert(this.S.errorPrefix + (e.message || e));
+            this.cancelCrop();
+          }
+        },
+        destroyCropper() {
+          if (this.cropper) {
+            this.cropper.destroy();
+            this.cropper = null;
+          }
+        },
+        setCropAspect(aspect) {
+          this.cropAspect = aspect;
+          if (this.cropper) this.cropper.setAspectRatio(aspect === null ? NaN : aspect);
+        },
+        rotateCrop(degrees) {
+          if (this.cropper) this.cropper.rotate(degrees);
+        },
+        cancelCrop() {
+          this.showCropper = false;
+          this.cropBusy = false;
+          this.destroyCropper();
+          if (this.cropObjectUrl) {
+            URL.revokeObjectURL(this.cropObjectUrl);
+            this.cropObjectUrl = null;
+          }
+          this.pendingImageDish = null;
+        },
+        async applyCrop() {
+          const dish = this.pendingImageDish;
+          if (!this.cropper || !dish) return;
+          this.cropBusy = true;
+          try {
+            // Capped here, so a 40 MP original never leaves the browser full size
+            const canvas = this.cropper.getCroppedCanvas({
+              maxWidth: 1000,
+              maxHeight: 1000,
+              imageSmoothingQuality: 'high',
+              fillColor: '#000',
+            });
+            if (!canvas) throw new Error(this.S.imageEncodeFailed);
+            const blob = await new Promise((resolve, reject) => canvas.toBlob(
+              b => b ? resolve(b) : reject(new Error(this.S.imageEncodeFailed)),
+              'image/jpeg',
+              0.82
+            ));
+            await this.uploadDishImage(dish, blob);
+            this.cancelCrop();
           } catch(e) {
             alert(this.S.errorPrefix + (e.message || e));
+            this.cropBusy = false;
           }
         },
         downscaleImage(file, maxSize, quality) {
