@@ -16,6 +16,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 - **Surprise me 🎲** — fetches a random recipe from [TheMealDB](https://www.themealdb.com/) (free, no API key needed)
 - **Chefkoch 👨‍🍳** — pulls a random German recipe (name + image) from Chefkoch's recipe API
 - **Dish manager** — add, remove, or bulk-edit your dish list; blocked dishes can be unblocked early
+- **Dish photos** — give a dish a picture and it appears behind that day's card, dimmed with the text on translucent bubbles; entirely optional, a plain text-only list keeps working
 - **History export** — download your full meal history as CSV
 - **DE / EN localisation** — configured in the integration options (browser language as fallback)
 - **Persistent storage** — all data saved in Home Assistant's `.storage/` directory
@@ -56,8 +57,20 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 | Edit a planned day | Tap the day card → "Change" |
 | Move or swap a planned meal | Tap the day card → "Move / swap", then pick a day (empty = move, occupied = swap) |
 | Manage dish list | Tap "Manage dish list" at the bottom |
+| Add or change a dish photo | Manage dish list → tap the tile to the left of the dish |
+| Remove a dish photo | Manage dish list → tap 🚫 on that row |
 | Switch language | Settings → Devices & Services → Meal Planner → Configure |
 | Export history | Tap "History as CSV" at the bottom |
+
+---
+
+## Dish photos
+
+Photos are optional. A dish without one looks exactly as before, so you can keep the list as plain text.
+
+- Pictures are scaled down **in the browser** before upload (longest edge 1000 px, JPEG), so a phone photo arrives as a few dozen kilobytes and no image library is needed on the Home Assistant side.
+- They are stored in `config/meal_planner_images/` and are therefore included in Home Assistant backups.
+- A photo belongs to its dish. Renaming a dish in **bulk edit** counts as deleting one dish and creating another, so the photo is lost. Renaming the dish row itself keeps it.
 
 ---
 

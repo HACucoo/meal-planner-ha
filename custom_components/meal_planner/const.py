@@ -55,6 +55,16 @@ TYPE_ORDER = "order"
 TYPE_NOTHING = "nothing"
 TYPE_CUSTOM = "custom"
 
+# Dish photos — stored in the config dir, served as static files
+IMAGE_DIR_NAME = "meal_planner_images"
+IMAGE_URL_BASE = "/meal_planner_images"
+MAX_IMAGE_BYTES = 3 * 1024 * 1024  # generous: the panel downscales before upload
+IMAGE_CONTENT_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+
 # Config option keys
 CONF_LANG = "lang"
 CONF_HOLIDAY_COUNTRY = "holiday_country"

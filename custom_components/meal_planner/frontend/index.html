@@ -119,11 +119,69 @@
     body .hover\:text-red-400:hover     { color: var(--mp-accent-red) !important; }
 
     .day-card {
+      position: relative;
+      overflow: hidden;
+      min-height: 132px;
       transition: transform 0.1s, box-shadow 0.1s;
       cursor: pointer;
     }
+    /* Three rows should fill the screen without ever forcing a scroll:
+       roughly a third of the viewport, minus header and footer, with guards. */
+    @media (min-width: 640px) {
+      .day-card { min-height: clamp(148px, calc(30vh - 44px), 260px); }
+    }
     .day-card:hover  { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
     .day-card:active { transform: scale(0.97); }
+
+    /* ── Optional dish photo as card background ── */
+    .day-photo {
+      position: absolute; inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    /* Scrim keeps the lower text readable on bright photos */
+    .day-card.has-photo::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.60), rgba(0,0,0,0.05) 65%);
+      pointer-events: none;
+    }
+    .day-content { position: relative; z-index: 1; }
+
+    /* Translucent bubbles behind text — only drawn when a photo sits behind it */
+    .day-card.has-photo .bubble {
+      background: rgba(0,0,0,0.42);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      border-radius: 0.65rem;
+      padding: 0.15rem 0.5rem;
+    }
+    .day-card.has-photo .wd,
+    .day-card.has-photo .meal,
+    .day-card.has-photo .daynum:not(.mp-accent) {
+      color: #fff !important;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.75);
+    }
+    .day-card.has-photo .mp-day-holiday-label { text-shadow: 0 1px 3px rgba(0,0,0,0.75); }
+
+    /* Dish photo thumbnail in the dish manager */
+    .dish-thumb {
+      width: 52px; height: 52px;
+      flex-shrink: 0;
+      border-radius: 0.7rem;
+      border: 1px solid var(--mp-border);
+      background-color: var(--mp-surface-2);
+      background-size: cover;
+      background-position: center;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--mp-text-muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+      transition: border-color 0.12s;
+    }
+    .dish-thumb:hover { border-color: var(--mp-text-muted); }
 
     /* Day card theme variants */
     .mp-day-default { background: var(--mp-surface); border: 1px solid var(--mp-border); }
@@ -268,62 +326,71 @@
 </head>
 <body x-data="mealPlanner()" x-init="init()" x-cloak>
 
-  <div class="max-w-4xl mx-auto px-3 py-4" @keydown.escape.window="handleEscape()">
+  <div class="max-w-[1500px] mx-auto px-4 py-5" @keydown.escape.window="handleEscape()">
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-4 gap-2">
+    <div class="flex items-center justify-between mb-5 gap-2">
       <div class="min-w-0">
-        <h1 class="text-xl font-bold text-white leading-tight">🍽️ Meal Planner</h1>
-        <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="weekLabel"></p>
+        <h1 class="text-2xl font-bold text-white leading-tight">🍽️ Meal Planner</h1>
+        <p class="text-gray-500 text-sm mt-0.5 truncate" x-text="weekLabel"></p>
       </div>
       <div class="flex gap-1.5 shrink-0">
-        <button class="btn btn-neutral px-3" @click="loadPlan" x-text="S.today"></button>
+        <button class="btn btn-neutral px-4" @click="loadPlan" x-text="S.today"></button>
       </div>
     </div>
 
-    <!-- Week grid — 1 col on small, 3 col on medium+, 4 col on large -->
-    <div class="grid grid-cols-2 sm:grid-cols-7 gap-2.5">
+    <!-- Week grid — 2 columns on phones, 7 across from tablet width up -->
+    <div class="grid grid-cols-2 sm:grid-cols-7 gap-3">
       <template x-for="day in weekDays" :key="day.iso">
         <div
-          class="day-card rounded-2xl px-3.5 py-4 flex flex-col gap-2"
-          :class="dayCardClass(day)"
+          class="day-card rounded-2xl p-3 flex flex-col"
+          :class="dayCardClass(day) + (dayImage(day) ? ' has-photo' : '')"
           :title="holidayName(day)"
           @click="openDay(day)"
         >
-          <!-- Date row -->
-          <div class="flex items-baseline justify-between">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide" x-text="day.weekday"></span>
-            <span
-              class="text-lg font-bold leading-none"
-              :class="day.isToday ? 'mp-accent' : ''"
-              x-text="day.dayNum"
-            ></span>
-          </div>
+          <!-- Dish photo, dimmed so the text stays readable -->
+          <div
+            class="day-photo"
+            x-show="dayImage(day)"
+            :style="dayImage(day) ? `background-image:url('${dayImage(day)}')` : ''"
+          ></div>
 
-          <!-- Holiday label (only shown if it's a holiday) -->
-          <p
-            class="mp-day-holiday-label"
-            x-show="holidayName(day)"
-            x-text="holidayName(day)"
-          ></p>
-
-          <!-- Meal status -->
-          <template x-if="plan[day.iso]">
-            <div>
+          <div class="day-content flex flex-col gap-1.5 h-full">
+            <!-- Date row -->
+            <div class="flex items-baseline justify-between bubble">
+              <span class="wd text-sm font-semibold text-gray-400 uppercase tracking-wide" x-text="day.weekday"></span>
               <span
-                x-show="!['dish','custom'].includes(plan[day.iso].type)"
-                class="tag" :class="typeTagClass(plan[day.iso].type)" x-text="typeLabel(plan[day.iso].type)"
+                class="daynum text-2xl font-bold leading-none text-white"
+                :class="day.isToday ? 'mp-accent' : ''"
+                x-text="day.dayNum"
               ></span>
-              <p
-                class="text-sm font-normal text-white mt-1 leading-tight line-clamp-2"
-                x-text="plan[day.iso].dish_name || ''"
-                x-show="plan[day.iso].dish_name"
-              ></p>
             </div>
-          </template>
-          <template x-if="!plan[day.iso]">
-            <p class="text-xs text-gray-600 italic" x-text="S.notPlanned"></p>
-          </template>
+
+            <!-- Holiday label (only shown if it's a holiday) -->
+            <p
+              class="mp-day-holiday-label"
+              x-show="holidayName(day)"
+              x-text="holidayName(day)"
+            ></p>
+
+            <!-- Meal status, pinned to the bottom of the card -->
+            <template x-if="plan[day.iso]">
+              <div class="mt-auto">
+                <span
+                  x-show="!['dish','custom'].includes(plan[day.iso].type)"
+                  class="tag" :class="typeTagClass(plan[day.iso].type)" x-text="typeLabel(plan[day.iso].type)"
+                ></span>
+                <p
+                  class="meal text-base font-normal text-white mt-1 leading-snug line-clamp-3 bubble"
+                  x-text="plan[day.iso].dish_name || ''"
+                  x-show="plan[day.iso].dish_name"
+                ></p>
+              </div>
+            </template>
+            <template x-if="!plan[day.iso]">
+              <p class="meal text-sm text-gray-600 italic mt-auto" x-text="S.notPlanned"></p>
+            </template>
+          </div>
         </div>
       </template>
     </div>
@@ -356,6 +423,12 @@
       <!-- ── Already planned: show summary + change/delete ── -->
       <template x-if="plan[activeDay?.iso] && !editMode">
         <div>
+          <img
+            x-show="activeDayImage()"
+            :src="activeDayImage()"
+            class="w-full h-44 object-cover rounded-xl mb-3"
+            alt=""
+          />
           <div class="bg-gray-800 rounded-xl p-3.5 mb-3">
             <p class="text-xs text-gray-500 mb-1" x-text="S.currentlyPlanned"></p>
             <span class="tag" :class="typeTagClass(plan[activeDay?.iso]?.type)" x-text="typeLabel(plan[activeDay?.iso]?.type)"></span>
@@ -643,10 +716,28 @@
             <button class="btn btn-success shrink-0" @click="addDish()" x-text="S.add"></button>
           </div>
 
+          <!-- Hidden picker, shared by every row -->
+          <input
+            type="file"
+            accept="image/*"
+            class="hidden"
+            x-ref="dishImageInput"
+            @change="onDishImageSelected($event)"
+          />
+
           <!-- Dish list -->
           <div class="max-h-[55vh] overflow-y-auto space-y-1 pr-1">
             <template x-for="dish in allDishes" :key="dish.id">
               <div class="flex items-center gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
+                <!-- Photo: click to set or replace -->
+                <div
+                  class="dish-thumb"
+                  :style="dish.image ? `background-image:url('${imageUrl(dish)}')` : ''"
+                  @click="pickDishImage(dish)"
+                  :title="dish.image ? S.changePhoto : S.addPhoto"
+                >
+                  <span x-show="!dish.image">＋</span>
+                </div>
                 <div class="flex-1 min-w-0">
                   <p class="font-medium text-white text-sm truncate" x-text="dish.name"></p>
                   <p class="text-xs text-gray-500"
@@ -657,6 +748,12 @@
                         : S.neverCooked"
                   ></p>
                 </div>
+                <button
+                  x-show="dish.image"
+                  class="text-gray-600 hover:text-red-400 transition-colors text-sm shrink-0"
+                  @click="removeDishImage(dish)"
+                  :title="S.removePhoto"
+                >🚫</button>
                 <button
                   x-show="dish.blocked_until && dish.blocked_until > today"
                   class="btn btn-neutral text-xs px-2 py-1 shrink-0"
@@ -875,7 +972,12 @@
       unblock: 'Freigeben',
       tabList: 'Liste',
       tabBulk: 'Massenbearbeitung',
-      bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten.',
+      addPhoto: 'Foto hinzufügen',
+      changePhoto: 'Foto ändern',
+      removePhoto: 'Foto entfernen',
+      imageEncodeFailed: 'Bild konnte nicht verarbeitet werden.',
+      imageReadFailed: 'Datei ist kein lesbares Bild.',
+      bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten. Fotos hängen am Gericht: Wird ein Name hier geändert, gilt das als neues Gericht und das Foto geht verloren.',
       bulkPlaceholder: 'Spaghetti Bolognese\nHähnchen-Curry\n…',
       bulkSave: 'Speichern',
       cancel: 'Abbrechen',
@@ -978,7 +1080,12 @@
       unblock: 'Unblock',
       tabList: 'List',
       tabBulk: 'Bulk edit',
-      bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved.',
+      addPhoto: 'Add photo',
+      changePhoto: 'Change photo',
+      removePhoto: 'Remove photo',
+      imageEncodeFailed: 'Could not process the image.',
+      imageReadFailed: 'That file is not a readable image.',
+      bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved. Photos belong to a dish: renaming one here counts as a new dish and loses its photo.',
       bulkPlaceholder: 'Spaghetti Bolognese\nChicken Curry\n…',
       bulkSave: 'Save',
       cancel: 'Cancel',
@@ -1012,6 +1119,7 @@
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const API = '/api/meal_planner';
+    const IMAGE_BASE = '/meal_planner_images';
 
     function isoWeek(date) {
       const d = new Date(date);
@@ -1080,6 +1188,8 @@
         // Dish manager
         showDishManager: false,
         allDishes: [],
+        dishIndex: { byId: {}, byName: {} },
+        pendingImageDish: null,
         newDishName: '',
         dishManagerTab: 'list',
         bulkText: '',
@@ -1097,7 +1207,8 @@
               }
             }
           } catch(e) { /* keep browser default */ }
-          await this.loadPlan();
+          // Dishes carry the photos, so the overview needs them up front
+          await Promise.all([this.loadPlan(), this.loadDishes()]);
         },
 
         applyHATheme() {
@@ -1512,8 +1623,96 @@
           try {
             const resp = await fetch(`${API}/dishes`);
             this.allDishes = await resp.json();
+            this.rebuildDishIndex();
           } catch(e) {
             console.error('Failed to load dishes', e);
+          }
+        },
+
+        // ── Dish photos ──
+        rebuildDishIndex() {
+          // Lookup tables so the overview can resolve a photo per card cheaply
+          const byId = {}, byName = {};
+          for (const d of this.allDishes) {
+            byId[d.id] = d;
+            byName[d.name.toLowerCase()] = d;
+          }
+          this.dishIndex = { byId, byName };
+        },
+        dishFor(entry) {
+          if (!entry) return null;
+          const idx = this.dishIndex;
+          return idx.byId[entry.dish_id]
+            || (entry.dish_name ? idx.byName[entry.dish_name.trim().toLowerCase()] : null)
+            || null;
+        },
+        imageUrl(dish) {
+          return dish && dish.image ? `${IMAGE_BASE}/${dish.image}` : '';
+        },
+        dayImage(day) {
+          const entry = this.plan[day.iso];
+          // Photos only make sense for actual cooking entries
+          if (!entry || !['dish', 'custom'].includes(entry.type)) return '';
+          return this.imageUrl(this.dishFor(entry));
+        },
+        activeDayImage() {
+          return this.activeDay ? this.dayImage(this.activeDay) : '';
+        },
+        pickDishImage(dish) {
+          this.pendingImageDish = dish;
+          this.$refs.dishImageInput.value = '';
+          this.$refs.dishImageInput.click();
+        },
+        async onDishImageSelected(event) {
+          const file = event.target.files && event.target.files[0];
+          const dish = this.pendingImageDish;
+          event.target.value = '';
+          this.pendingImageDish = null;
+          if (!file || !dish) return;
+          try {
+            const blob = await this.downscaleImage(file, 1000, 0.82);
+            const resp = await fetch(`${API}/dishes/${dish.id}/image`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'image/jpeg' },
+              body: blob,
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            await this.loadDishes();
+          } catch(e) {
+            alert(this.S.errorPrefix + (e.message || e));
+          }
+        },
+        downscaleImage(file, maxSize, quality) {
+          // Resize in the browser so the backend needs no image library
+          return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+              URL.revokeObjectURL(url);
+              const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(img.width * scale));
+              canvas.height = Math.max(1, Math.round(img.height * scale));
+              canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(
+                b => b ? resolve(b) : reject(new Error(this.S.imageEncodeFailed)),
+                'image/jpeg',
+                quality
+              );
+            };
+            img.onerror = () => {
+              URL.revokeObjectURL(url);
+              reject(new Error(this.S.imageReadFailed));
+            };
+            img.src = url;
+          });
+        },
+        async removeDishImage(dish) {
+          try {
+            await fetch(`${API}/dishes/${dish.id}/image`, { method: 'DELETE' });
+            await this.loadDishes();
+          } catch(e) {
+            console.error('Remove photo failed', e);
           }
         },
         async addDish() {

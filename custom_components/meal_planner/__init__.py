@@ -22,6 +22,10 @@ from homeassistant.helpers.storage import Store
 from .const import (
     DEFAULT_DISHES,
     DOMAIN,
+    IMAGE_CONTENT_TYPES,
+    IMAGE_DIR_NAME,
+    IMAGE_URL_BASE,
+    MAX_IMAGE_BYTES,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
@@ -72,12 +76,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) 
 
     # Static files + API views — register once per HA run (reload-safe)
     if not hass.data.get(DATA_HTTP_REGISTERED):
+        images_dir = _image_dir(hass)
+        await hass.async_add_executor_job(_ensure_dir, images_dir)
         await hass.http.async_register_static_paths([
-            StaticPathConfig(f"/{DOMAIN}_frontend", str(FRONTEND_DIR), cache_headers=False)
+            StaticPathConfig(f"/{DOMAIN}_frontend", str(FRONTEND_DIR), cache_headers=False),
+            # Photo file names carry a random suffix, so they can be cached hard
+            StaticPathConfig(IMAGE_URL_BASE, str(images_dir), cache_headers=True),
         ])
         for view_cls in (
             MealPlannerDishesView,
             MealPlannerDishView,
+            MealPlannerDishImageView,
             MealPlannerPlanView,
             MealPlannerDayView,
             MealPlannerMoveView,
@@ -200,8 +209,43 @@ def _new_dish(name: str) -> dict:
         "last_used": None,
         "blocked_until": None,
         "use_count": 0,
+        "image": None,
         "created_at": date.today().isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Dish photos (optional — a plain text-only dish list keeps working)
+# ---------------------------------------------------------------------------
+
+def _image_dir(hass: HomeAssistant) -> Path:
+    """Directory holding the dish photos, inside the HA config folder."""
+    return Path(hass.config.path(IMAGE_DIR_NAME))
+
+
+def _ensure_dir(path: Path) -> None:
+    """Create a directory including parents. Safe to call in an executor."""
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _store_image(directory: Path, filename: str, payload: bytes, old: str | None) -> None:
+    """Write a photo and drop the one it replaces. Safe to call in an executor."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / filename).write_bytes(payload)
+    if old and old != filename:
+        _remove_image(directory, old)
+
+
+def _remove_image(directory: Path, filename: str | None) -> None:
+    """Delete a photo if it exists. Safe to call in an executor."""
+    if not filename:
+        return
+    # Defensive: never step outside the image directory
+    candidate = directory / Path(filename).name
+    try:
+        candidate.unlink(missing_ok=True)
+    except OSError as err:  # noqa: BLE001
+        _LOGGER.warning("Could not remove dish photo %s: %s", candidate, err)
 
 
 def _default_data() -> dict:
@@ -323,12 +367,74 @@ class MealPlannerDishView(MealPlannerBaseView):
 
     async def delete(self, request: web.Request, dish_id: str) -> web.Response:
         data = self.rt.data
-        before = len(data["dishes"])
-        data["dishes"] = [d for d in data["dishes"] if d["id"] != dish_id]
-        if len(data["dishes"]) == before:
+        removed = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+        if removed is None:
             return self.json_message("not found", status_code=404)
+        data["dishes"] = [d for d in data["dishes"] if d["id"] != dish_id]
+        if image := removed.get("image"):
+            await self.hass.async_add_executor_job(
+                _remove_image, _image_dir(self.hass), image
+            )
         await self.rt.store.async_save(data)
         return self.json_message("deleted")
+
+
+class MealPlannerDishImageView(MealPlannerBaseView):
+    """POST/DELETE /api/meal_planner/dishes/{dish_id}/image  – dish photo.
+
+    POST expects the raw image bytes with a matching Content-Type. The panel
+    downscales and re-encodes in the browser, so no image library is needed
+    here. Photos are optional: a dish without one simply has image = null.
+    """
+
+    url = "/api/meal_planner/dishes/{dish_id}/image"
+    name = "api:meal_planner:dish_image"
+
+    async def post(self, request: web.Request, dish_id: str) -> web.Response:
+        data = self.rt.data
+        dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+        if dish is None:
+            return self.json_message("dish not found", status_code=404)
+
+        content_type = (request.content_type or "").lower()
+        extension = IMAGE_CONTENT_TYPES.get(content_type)
+        if extension is None:
+            return self.json_message(
+                f"content type must be one of {sorted(IMAGE_CONTENT_TYPES)}",
+                status_code=415,
+            )
+
+        payload = await request.read()
+        if not payload:
+            return self.json_message("empty image body", status_code=400)
+        if len(payload) > MAX_IMAGE_BYTES:
+            return self.json_message(
+                f"image too large (max {MAX_IMAGE_BYTES // 1024 // 1024} MB)",
+                status_code=413,
+            )
+
+        # Random suffix busts the browser cache when a photo is replaced
+        filename = f"{dish_id}_{uuid.uuid4().hex[:8]}{extension}"
+        await self.hass.async_add_executor_job(
+            _store_image, _image_dir(self.hass), filename, payload, dish.get("image")
+        )
+        dish["image"] = filename
+        await self.rt.store.async_save(data)
+        return self.json(dish)
+
+    async def delete(self, request: web.Request, dish_id: str) -> web.Response:
+        data = self.rt.data
+        dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+        if dish is None:
+            return self.json_message("dish not found", status_code=404)
+
+        if image := dish.get("image"):
+            await self.hass.async_add_executor_job(
+                _remove_image, _image_dir(self.hass), image
+            )
+        dish["image"] = None
+        await self.rt.store.async_save(data)
+        return self.json(dish)
 
 
 class MealPlannerPlanView(MealPlannerBaseView):

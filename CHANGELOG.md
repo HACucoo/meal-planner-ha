@@ -3,6 +3,27 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-09-22
+
+### Added
+- **Dish photos.** A dish can carry a picture, set and replaced from the dish
+  list. The photo appears behind that day's card, dimmed, with the weekday and
+  the meal name on translucent bubbles so they stay readable on bright images.
+  The day dialog shows it as a banner. Photos are entirely optional: a
+  text-only dish list keeps working unchanged.
+  - Pictures are downscaled in the browser (longest edge 1000 px, JPEG) before
+    upload, so no image library is needed on the Home Assistant side.
+  - Stored in `config/meal_planner_images/`, so they are part of HA backups.
+  - Deleting a dish, or replacing its photo, removes the old file.
+
+### Changed
+- **The week overview uses the available screen.** The layout was capped at
+  about 900 px wide regardless of the display; it now grows to 1500 px.
+- **Cards are much larger** and their height follows the viewport, so the three
+  rows fill a wall tablet without ever forcing a scrollbar.
+- Larger day numbers and meal names, and up to three lines per meal, so dish
+  names are far less likely to be cut off.
+
 ## [1.6.0] - 2026-09-22
 
 Alignment with the Home Assistant integration standards (Quality Scale).
@@ -122,6 +143,7 @@ Existing entity IDs are unchanged, so dashboards and automations keep working.
   random recipes, summary sensors, Lovelace list card, CSV history export and
   DE / EN localisation.
 
+[1.7.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.7.0
 [1.6.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.6.0
 [1.5.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.5.0
 [1.4.1]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.4.1
