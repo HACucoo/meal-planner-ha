@@ -938,6 +938,11 @@
       <template x-if="dishManagerTab === 'places'">
         <div>
           <p class="text-xs text-gray-500 mb-3" x-text="S.placesHint"></p>
+          <p
+            x-show="!placesSupported"
+            class="text-xs text-amber-400 bg-gray-800 rounded-xl px-3 py-2.5 mb-3"
+            x-text="S.placesNeedRestart"
+          ></p>
           <div class="max-h-[55vh] overflow-y-auto pr-1">
             <template x-for="type in ['eating_out', 'order']" :key="type">
               <div class="mb-4">
@@ -1180,6 +1185,7 @@
       placeDefaultHint: 'Für Tage ohne Namen oder ohne eigenes Foto',
       lastVisit: 'Zuletzt:',
       notVisitedYet: 'Noch nicht besucht',
+      placesNeedRestart: 'Home Assistant muss nach dem Update noch neu gestartet werden, erst dann lassen sich hier Fotos setzen.',
       cropTitle: 'Ausschnitt wählen',
       cropHint: 'Rahmen ziehen zum Verschieben, Ecken zum Vergrößern, Mausrad oder zwei Finger zum Zoomen.',
       cropSquare: 'Quadratisch',
@@ -1305,6 +1311,7 @@
       placeDefaultHint: 'For days without a name or a photo of their own',
       lastVisit: 'Last:',
       notVisitedYet: 'Not visited yet',
+      placesNeedRestart: 'Home Assistant still needs a restart after the update before photos can be set here.',
       cropTitle: 'Choose the crop',
       cropHint: 'Drag the frame to move it, the corners to resize, scroll or pinch to zoom.',
       cropSquare: 'Square',
@@ -1424,6 +1431,7 @@
         dishIndex: { byId: {}, byName: {} },
         places: [],      // eating-out / order places, with photos and visit counts
         placeIndex: {},  // { type: { lowercased name: place } }
+        placesSupported: true,  // false while an older backend still runs (update without restart)
         pendingImage: null,  // { kind: 'dish', dish } or { kind: 'place', type, name }, each with a label
         showCropper: false,
         cropAspect: 1,
@@ -1956,6 +1964,8 @@
         async loadPlaces() {
           try {
             const resp = await fetch(`${API}/places`);
+            // 404: the files are new but HA still runs the old backend
+            this.placesSupported = resp.status !== 404;
             if (!resp.ok) return;
             this.places = await resp.json();
             const index = {};
@@ -2007,7 +2017,7 @@
             const dish = this.dishFor(entry);
             return dish ? { kind: 'dish', dish, label: dish.name, hasOwn: !!dish.image } : null;
           }
-          if (['eating_out', 'order'].includes(entry.type)) {
+          if (['eating_out', 'order'].includes(entry.type) && this.placesSupported) {
             const name = (entry.dish_name || '').trim();
             return {
               kind: 'place', type: entry.type, name,
