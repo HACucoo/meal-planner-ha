@@ -19,6 +19,8 @@
  *   days: 7                    <- how many days ahead, today included
  *   show_empty: false          <- also list unplanned and "no cooking" days
  *   navigate: true             <- tapping the card opens the Meal Planner panel
+ *   relative: all              <- right-hand badge: all (Today / Tomorrow / in N days),
+ *                                 near (only Today and Tomorrow) or none
  *   lang: "de"
  * All options except lang can also be set in the visual card editor.
  */
@@ -334,7 +336,12 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
       });
     }
 
-    const rel = n => (n === 0 ? S.today : n === 1 ? S.tomorrow : S.inDays(n));
+    // Right-hand badge; further days can be left to the date on the left
+    const relMode = ['all', 'near', 'none'].includes(this._config.relative) ? this._config.relative : 'all';
+    const rel = n => {
+      if (relMode === 'none' || (relMode === 'near' && n > 1)) return '';
+      return n === 0 ? S.today : n === 1 ? S.tomorrow : S.inDays(n);
+    };
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -466,7 +473,7 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
                 </div>
                 <div class="name">${esc(r.name)}</div>
               </div>
-              <span class="rel">${esc(rel(r.offset))}</span>
+              ${rel(r.offset) ? `<span class="rel">${esc(rel(r.offset))}</span>` : ''}
             </div>
           `).join('')}
         </div>
@@ -493,21 +500,40 @@ const EDITOR_LABELS = {
     days: 'Wie viele Tage (ab heute)',
     show_empty: 'Ungeplante Tage und „Kein Kochen“ zeigen',
     navigate: 'Tippen öffnet den Meal Planner',
+    relative: 'Hinweis rechts',
+    relative_all: 'Heute, Morgen, in x Tagen',
+    relative_near: 'Nur Heute und Morgen',
+    relative_none: 'Ausblenden',
   },
   en: {
     title: 'Heading (empty = none)',
     days: 'How many days (from today)',
     show_empty: 'Show unplanned and "no cooking" days',
     navigate: 'Tapping opens the Meal Planner',
+    relative: 'Badge on the right',
+    relative_all: 'Today, Tomorrow, in x days',
+    relative_near: 'Only Today and Tomorrow',
+    relative_none: 'Hide',
   },
 };
 
-const EDITOR_SCHEMA = [
-  { name: 'title', selector: { text: {} } },
-  { name: 'days', selector: { number: { min: 1, max: 21, step: 1, mode: 'slider' } } },
-  { name: 'show_empty', selector: { boolean: {} } },
-  { name: 'navigate', selector: { boolean: {} } },
-];
+function editorSchema(L) {
+  return [
+    { name: 'title', selector: { text: {} } },
+    { name: 'days', selector: { number: { min: 1, max: 21, step: 1, mode: 'slider' } } },
+    {
+      name: 'relative',
+      selector: {
+        select: {
+          mode: 'dropdown',
+          options: ['all', 'near', 'none'].map(value => ({ value, label: L[`relative_${value}`] })),
+        },
+      },
+    },
+    { name: 'show_empty', selector: { boolean: {} } },
+    { name: 'navigate', selector: { boolean: {} } },
+  ];
+}
 
 class MealPlannerUpcomingCardEditor extends HTMLElement {
   setConfig(config) {
@@ -544,6 +570,7 @@ class MealPlannerUpcomingCardEditor extends HTMLElement {
         if (!config.title) delete config.title;
         if (!config.show_empty) delete config.show_empty;
         if (config.navigate !== false) delete config.navigate;
+        if (!config.relative || config.relative === 'all') delete config.relative;
         this._config = config;
         this.dispatchEvent(new CustomEvent('config-changed', {
           detail: { config }, bubbles: true, composed: true,
@@ -552,12 +579,14 @@ class MealPlannerUpcomingCardEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     const lang = (this._hass.language || navigator.language || 'de').startsWith('de') ? 'de' : 'en';
-    this._form.computeLabel = schema => EDITOR_LABELS[lang][schema.name] || schema.name;
+    const L = EDITOR_LABELS[lang];
+    this._form.computeLabel = schema => L[schema.name] || schema.name;
     this._form.hass = this._hass;
-    this._form.schema = EDITOR_SCHEMA;
+    this._form.schema = editorSchema(L);
     // Show defaults explicitly, so the slider and toggles start where the card does
     this._form.data = {
       days: 7,
+      relative: 'all',
       show_empty: false,
       navigate: true,
       ...this._config,
