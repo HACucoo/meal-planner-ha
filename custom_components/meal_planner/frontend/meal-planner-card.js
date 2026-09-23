@@ -18,12 +18,15 @@
  *   title: "Nächste Gerichte"  <- card heading (omit to hide)
  *   days: 7                    <- how many days ahead, today included
  *   show_empty: false          <- also list unplanned and "no cooking" days
+ *   navigate: true             <- tapping the card opens the Meal Planner panel
  *   lang: "de"
+ * All options except lang can also be set in the visual card editor.
  */
 
 const API = '/api/meal_planner';
 const IMAGE_BASE = '/meal_planner_images';
 const REFRESH_MS = 5 * 60 * 1000;
+const PANEL_PATH = '/meal-planner';  // PANEL_URL in const.py
 
 const STRINGS = {
   de: {
@@ -238,8 +241,36 @@ const TYPE_STYLE = {
 };
 
 class MealPlannerUpcomingCard extends MealPlannerBaseCard {
+  constructor() {
+    super();
+    // One listener on the host survives every re-render of the shadow DOM
+    this.addEventListener('click', () => this._openPanel());
+    this.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        this._openPanel();
+      }
+    });
+  }
+
   static getStubConfig() {
     return { days: 7 };
+  }
+
+  static getConfigElement() {
+    return document.createElement('meal-planner-upcoming-card-editor');
+  }
+
+  _navigates() {
+    // Not while the dashboard is being edited or the card is a preview in the editor
+    return this._config.navigate !== false && !this.editMode && !this.preview;
+  }
+
+  _openPanel() {
+    if (!this._navigates()) return;
+    // How Home Assistant's own navigate action switches pages without a reload
+    history.pushState(null, '', PANEL_PATH);
+    window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
   }
 
   _imageResolver(dishes, places) {
@@ -309,6 +340,8 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
       <style>
         :host { display: block; }
         ha-card { padding: 12px; }
+        ha-card.clickable { cursor: pointer; }
+        ha-card.clickable:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .title {
           font-size: 0.95rem;
           font-weight: 600;
@@ -418,7 +451,7 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
           padding: 8px 4px;
         }
       </style>
-      <ha-card>
+      <ha-card${this._navigates() ? ' class="clickable" role="button" tabindex="0"' : ''}>
         ${this._titleHTML()}
         <div class="list">
           ${rows.length === 0 ? `<div class="empty-note">${esc(S.nothingUpcoming)}</div>` : ''}
@@ -452,8 +485,89 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
   }
 }
 
+// ── Visual editor for the upcoming card ──────────────────────────────────
+
+const EDITOR_LABELS = {
+  de: {
+    title: 'Überschrift (leer = keine)',
+    days: 'Wie viele Tage (ab heute)',
+    show_empty: 'Ungeplante Tage und „Kein Kochen“ zeigen',
+    navigate: 'Tippen öffnet den Meal Planner',
+  },
+  en: {
+    title: 'Heading (empty = none)',
+    days: 'How many days (from today)',
+    show_empty: 'Show unplanned and "no cooking" days',
+    navigate: 'Tapping opens the Meal Planner',
+  },
+};
+
+const EDITOR_SCHEMA = [
+  { name: 'title', selector: { text: {} } },
+  { name: 'days', selector: { number: { min: 1, max: 21, step: 1, mode: 'slider' } } },
+  { name: 'show_empty', selector: { boolean: {} } },
+  { name: 'navigate', selector: { boolean: {} } },
+];
+
+class MealPlannerUpcomingCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  async _ensureHaForm() {
+    if (customElements.get('ha-form')) return;
+    // ha-form is lazy-loaded; building a built-in card editor pulls it in
+    try {
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({ type: 'entities', entities: [] });
+      await card.constructor.getConfigElement();
+    } catch (e) {
+      console.warn('[meal-planner-card] could not load ha-form', e);
+    }
+  }
+
+  async _render() {
+    if (!this._config || !this._hass) return;
+    if (!this._form) {
+      await this._ensureHaForm();
+      if (this._form) return;  // another call finished first
+      this._form = document.createElement('ha-form');
+      this._form.addEventListener('value-changed', ev => {
+        const config = { ...this._config, ...ev.detail.value };
+        // Keep the YAML tidy: drop what is empty or at its default
+        if (!config.title) delete config.title;
+        if (!config.show_empty) delete config.show_empty;
+        if (config.navigate !== false) delete config.navigate;
+        this._config = config;
+        this.dispatchEvent(new CustomEvent('config-changed', {
+          detail: { config }, bubbles: true, composed: true,
+        }));
+      });
+      this.appendChild(this._form);
+    }
+    const lang = (this._hass.language || navigator.language || 'de').startsWith('de') ? 'de' : 'en';
+    this._form.computeLabel = schema => EDITOR_LABELS[lang][schema.name] || schema.name;
+    this._form.hass = this._hass;
+    this._form.schema = EDITOR_SCHEMA;
+    // Show defaults explicitly, so the slider and toggles start where the card does
+    this._form.data = {
+      days: 7,
+      show_empty: false,
+      navigate: true,
+      ...this._config,
+    };
+  }
+}
+
 customElements.define('meal-planner-list-card', MealPlannerListCard);
 customElements.define('meal-planner-upcoming-card', MealPlannerUpcomingCard);
+customElements.define('meal-planner-upcoming-card-editor', MealPlannerUpcomingCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push(
