@@ -55,6 +55,9 @@ TYPE_ORDER = "order"
 TYPE_NOTHING = "nothing"
 TYPE_CUSTOM = "custom"
 
+# Day types that name a place rather than a dish; their photos live in "places"
+PLACE_TYPES = (TYPE_EATING_OUT, TYPE_ORDER)
+
 # Dish photos — stored in the config dir, served as static files
 IMAGE_DIR_NAME = "meal_planner_images"
 IMAGE_URL_BASE = "/meal_planner_images"

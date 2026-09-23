@@ -3,6 +3,41 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Photos for eating out and ordering.** The picture belongs to the name of
+  the day ("Pizzeria Luigi") and shows on every day with that name. Each type
+  also has a default photo for unnamed days or names without their own.
+  Set from the planned day, or from the new "Eating out & orders" tab in the
+  dish manager.
+- The planned-day dialog has a photo button, for dishes as well.
+- **Crop dialog for photos**, like Home Assistant's own user-picture upload:
+  drag, zoom, rotate, square or free crop. Falls back to a direct upload if the
+  cropper cannot be loaded.
+- Accepting a Surprise me / Chefkoch recipe takes its picture along. A photo
+  you set yourself is never replaced.
+
+### Changed
+- **Today stands out**: accent border, halo, a slight lift, a "Today" badge
+  in place of the weekday, and its photo is shown undimmed. Upcoming days are dimmed less than past ones.
+- **Day cards are square.** From 1024 px up the grid is only as wide as
+  three rows of squares can be tall, so it still never forces a scrollbar.
+  Narrower tablets show four columns instead of seven, where square cards
+  would have been too small for the text.
+- **Weekends get a ring** in the same style as holidays, but neutral. A
+  holiday on a weekend keeps its amber ring.
+- **Statistics show everything**: all dishes, restaurants and delivery
+  services instead of a top 10, each with how often and when last, sortable
+  by clicking a column header. The `/api/meal_planner/stats` response now has
+  `dishes`, `eating_out` and `order` lists (with `last_used`) in place of the
+  `top_*` keys, and names that differ only in upper/lower case count together.
+
+### Fixed
+- The panel loaded all data twice on every open (Alpine called `init()` on
+  its own and once more through `x-init`).
+- Hovering a holiday card no longer hides its ring.
+
 ## [1.7.0] - 2026-09-22
 
 ### Added

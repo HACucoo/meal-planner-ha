@@ -125,19 +125,27 @@
     .day-card {
       position: relative;
       overflow: hidden;
-      min-height: 132px;
+      aspect-ratio: 1 / 1;
       transition: transform 0.1s, box-shadow 0.1s;
       cursor: pointer;
+      /* Weekend/holiday ring, today's glow and the hover lift each set their
+         own variable, so none of them wipes out another */
+      box-shadow: var(--mp-ring, 0 0 #0000), var(--mp-glow, 0 0 #0000), var(--mp-lift, 0 0 #0000);
     }
-    /* Three rows should fill the screen without ever forcing a scroll:
-       roughly a third of the viewport, minus header and footer, with guards. */
-    @media (min-width: 640px) {
-      .day-card { min-height: clamp(148px, calc(30vh - 44px), 260px); }
+    /* Square cards, three rows, no scrollbar: the grid is only as wide as
+       three rows of squares can be tall. The 190px cover padding, header
+       and footer; 72px are the six column gaps. */
+    @media (min-width: 1024px) {
+      .week-grid {
+        max-width: max(36rem, calc((100vh - 190px) / 3 * 7 + 72px));
+        margin-inline: auto;
+      }
     }
-    .day-card:hover  { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
+    .day-card:hover  { transform: translateY(-2px); --mp-lift: 0 6px 20px rgba(0,0,0,0.4); }
     .day-card:active { transform: scale(0.97); }
 
-    /* ── Optional dish photo as card background ── */
+    /* ── Optional photo as card background ──
+       Past days stay dimmed, upcoming days are brighter, today is undimmed. */
     .day-photo {
       position: absolute; inset: 0;
       background-size: cover;
@@ -145,6 +153,8 @@
       opacity: 0.55;
       pointer-events: none;
     }
+    .day-card.is-future .day-photo { opacity: 0.8; }
+    .day-card.is-today  .day-photo { opacity: 1; }
     /* Scrim keeps the lower text readable on bright photos */
     .day-card.has-photo::after {
       content: "";
@@ -162,13 +172,35 @@
       border-radius: 0.65rem;
       padding: 0.15rem 0.5rem;
     }
+    /* On a photo even today's number turns white — the badge carries the accent */
     .day-card.has-photo .wd,
     .day-card.has-photo .meal,
-    .day-card.has-photo .daynum:not(.mp-accent) {
+    .day-card.has-photo .daynum {
       color: #fff !important;
       text-shadow: 0 1px 3px rgba(0,0,0,0.75);
     }
     .day-card.has-photo .mp-day-holiday-label { text-shadow: 0 1px 3px rgba(0,0,0,0.75); }
+    /* Eating-out / order tags sit on the photo too */
+    .day-card.has-photo .tag {
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+
+    /* "Today" pill next to the weekday */
+    .today-badge {
+      display: inline-block;
+      background: var(--mp-primary);
+      color: #fff;
+      border-radius: 9999px;
+      padding: 0.15rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      line-height: 1.3;
+      vertical-align: 0.1em;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    }
 
     /* Dish photo thumbnail in the dish manager */
     .dish-thumb {
@@ -205,19 +237,31 @@
 
     /* Day card theme variants */
     .mp-day-default { background: var(--mp-surface); border: 1px solid var(--mp-border); }
-    .mp-day-today   {
-      background: color-mix(in srgb, var(--mp-primary) 25%, var(--mp-surface));
-      border: 1px solid color-mix(in srgb, var(--mp-primary) 55%, transparent);
-    }
     .mp-day-nothing { background: var(--mp-bg); border: 1px solid var(--mp-border); opacity: 0.6; }
     .mp-day-dish    { background: var(--mp-surface); border: 1px solid rgba(34,197,94,0.4); }
-
-    /* Holiday marker — amber ring laid on top of any other day variant.
-       Uses box-shadow so border-radius and existing borders stay intact. */
-    .mp-day-holiday {
-      box-shadow: 0 0 0 2px var(--mp-holiday-color, #f59e0b),
-                  0 0 0 4px color-mix(in srgb, var(--mp-holiday-color, #f59e0b) 25%, transparent);
+    /* Today: accent border, halo and a slight lift, so it stands out at a glance.
+       `scale` is separate from `transform`, so hover and press still work. */
+    .mp-day-today   {
+      background: color-mix(in srgb, var(--mp-primary) 25%, var(--mp-surface));
+      border: 2px solid var(--mp-primary);
+      --mp-glow: 0 0 0 3px color-mix(in srgb, var(--mp-primary) 35%, transparent),
+                 0 0 28px 4px color-mix(in srgb, var(--mp-primary) 60%, transparent);
+      scale: 1.04;
+      z-index: 2;
     }
+
+    /* Weekend and holiday markers — a ring laid on top of any other variant,
+       drawn as box-shadow so border-radius and borders stay intact. The
+       weekend ring is neutral; a holiday (declared later) replaces it with amber. */
+    .mp-day-weekend {
+      --mp-ring: 0 0 0 2px var(--mp-weekend-color),
+                 0 0 0 4px color-mix(in srgb, var(--mp-weekend-color) 25%, transparent);
+    }
+    .mp-day-holiday {
+      --mp-ring: 0 0 0 2px var(--mp-holiday-color, #f59e0b),
+                 0 0 0 4px color-mix(in srgb, var(--mp-holiday-color, #f59e0b) 25%, transparent);
+    }
+    :root { --mp-weekend-color: color-mix(in srgb, var(--mp-text) 50%, transparent); }
     .mp-day-holiday-label {
       font-size: 0.65rem;
       font-weight: 600;
@@ -331,6 +375,36 @@
       margin-bottom: 0.5rem;
     }
 
+    /* Statistics table */
+    .stats-scroll {
+      max-height: 55vh;
+      overflow-y: auto;
+      border: 1px solid var(--mp-border);
+      border-radius: 0.75rem;
+    }
+    .stats-table { width: 100%; border-collapse: collapse; }
+    .stats-table th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--mp-surface);
+      border-bottom: 1px solid var(--mp-border);
+      padding: 0.45rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--mp-text-muted);
+      text-align: left;
+    }
+    .stats-table th.text-right { text-align: right; }
+    .stats-table td { padding: 0.3rem 0.5rem; vertical-align: middle; }
+    .stats-table tbody tr + tr td { border-top: 1px solid color-mix(in srgb, var(--mp-border) 50%, transparent); }
+    .stats-col-count { width: 34%; }
+    .sort-btn {
+      font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+      background: none; border: none; padding: 0; cursor: pointer; white-space: nowrap;
+    }
+    .sort-btn:hover { color: var(--mp-text); }
+
     .divider {
       border-top: 1px solid var(--mp-border);
       margin: 1rem 0;
@@ -344,7 +418,17 @@
     }
   </style>
 </head>
-<body x-data="mealPlanner()" x-init="init()" x-cloak>
+<!-- No x-init: Alpine calls the component's init() by itself, a second call loaded everything twice -->
+<body x-data="mealPlanner()" x-cloak>
+
+  <!-- Hidden photo picker, shared by the dish list, the place list and the day dialog -->
+  <input
+    type="file"
+    accept="image/*"
+    class="hidden"
+    x-ref="imageInput"
+    @change="onImageSelected($event)"
+  />
 
   <div class="max-w-[1500px] mx-auto px-4 py-5" @keydown.escape.window="handleEscape()">
 
@@ -359,16 +443,16 @@
       </div>
     </div>
 
-    <!-- Week grid — 2 columns on phones, 7 across from tablet width up -->
-    <div class="grid grid-cols-2 sm:grid-cols-7 gap-3">
+    <!-- Week grid — 2 columns on phones, 4 on narrow tablets, 7 across from 1024px up -->
+    <div class="week-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
       <template x-for="day in weekDays" :key="day.iso">
         <div
           class="day-card rounded-2xl p-3 flex flex-col"
-          :class="dayCardClass(day) + (dayImage(day) ? ' has-photo' : '')"
+          :class="dayCardClass(day)"
           :title="holidayName(day)"
           @click="openDay(day)"
         >
-          <!-- Dish photo, dimmed so the text stays readable -->
+          <!-- Photo of the dish or place; how much it is dimmed depends on the day -->
           <div
             class="day-photo"
             x-show="dayImage(day)"
@@ -377,8 +461,10 @@
 
           <div class="day-content flex flex-col gap-1.5 h-full">
             <!-- Date row -->
-            <div class="flex items-baseline justify-between bubble">
-              <span class="wd text-sm font-semibold text-gray-400 uppercase tracking-wide" x-text="day.weekday"></span>
+            <div class="flex items-baseline justify-between gap-1 bubble">
+              <!-- Today shows a badge instead of the weekday: fits narrow cards, and everyone knows today's weekday -->
+              <span class="today-badge" x-show="day.isToday" x-text="S.today"></span>
+              <span class="wd text-sm font-semibold text-gray-400 uppercase tracking-wide" x-show="!day.isToday" x-text="day.weekday"></span>
               <span
                 class="daynum text-2xl font-bold leading-none text-white"
                 :class="day.isToday ? 'mp-accent' : ''"
@@ -454,6 +540,17 @@
             <span class="tag" :class="typeTagClass(plan[activeDay?.iso]?.type)" x-text="typeLabel(plan[activeDay?.iso]?.type)"></span>
             <span class="ml-2 font-semibold text-white text-sm" x-text="plan[activeDay?.iso]?.dish_name"></span>
           </div>
+          <!-- Photo for the dish or the place of this day -->
+          <template x-if="activeDayPhotoTarget()">
+            <div class="flex items-center gap-2 mb-3">
+              <button
+                class="btn btn-neutral text-xs shrink-0"
+                @click="pickImage(activeDayPhotoTarget())"
+                x-text="'📷 ' + (activeDayPhotoTarget().hasOwn ? S.changePhoto : S.addPhoto)"
+              ></button>
+              <span class="text-xs text-gray-500 min-w-0 truncate" x-text="S.photoAppliesTo + ' ' + activeDayPhotoTarget().label"></span>
+            </div>
+          </template>
           <div class="flex gap-2">
             <button class="btn btn-neutral flex-1" @click="startEdit()" x-text="S.change"></button>
             <button class="btn btn-danger" @click="clearDay(activeDay.iso)" x-text="S.delete"></button>
@@ -703,7 +800,7 @@
       <div class="flex items-start justify-between mb-1">
         <div class="min-w-0">
           <h2 class="text-lg font-bold text-white leading-tight" x-text="S.cropTitle"></h2>
-          <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="pendingImageDish?.name"></p>
+          <p class="text-gray-500 text-xs mt-0.5 truncate" x-text="pendingImage?.label"></p>
         </div>
         <button class="text-gray-500 hover:text-white text-2xl leading-none ml-3 shrink-0" @click="cancelCrop()">×</button>
       </div>
@@ -763,6 +860,12 @@
         ></button>
         <button
           class="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+          :class="dishManagerTab === 'places' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'"
+          @click="dishManagerTab = 'places'; loadPlaces()"
+          x-text="S.tabPlaces"
+        ></button>
+        <button
+          class="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors"
           :class="dishManagerTab === 'bulk' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'"
           @click="openBulkEdit()"
           x-text="S.tabBulk"
@@ -783,15 +886,6 @@
             />
             <button class="btn btn-success shrink-0" @click="addDish()" x-text="S.add"></button>
           </div>
-
-          <!-- Hidden picker, shared by every row -->
-          <input
-            type="file"
-            accept="image/*"
-            class="hidden"
-            x-ref="dishImageInput"
-            @change="onDishImageSelected($event)"
-          />
 
           <!-- Dish list -->
           <div class="max-h-[55vh] overflow-y-auto space-y-1 pr-1">
@@ -837,6 +931,52 @@
             </template>
             <template x-if="allDishes.length === 0">
               <p class="text-gray-500 italic text-sm text-center py-6" x-text="S.noDishes"></p>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- ── Tab: Places (eating out / order) ── -->
+      <template x-if="dishManagerTab === 'places'">
+        <div>
+          <p class="text-xs text-gray-500 mb-3" x-text="S.placesHint"></p>
+          <div class="max-h-[55vh] overflow-y-auto pr-1">
+            <template x-for="type in ['eating_out', 'order']" :key="type">
+              <div class="mb-4">
+                <p class="section-label" x-text="typeLabel(type)"></p>
+                <div class="space-y-1">
+                  <template x-for="place in placesOfType(type)" :key="type + ':' + place.name">
+                    <div class="flex items-center gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
+                      <div
+                        class="dish-thumb"
+                        :style="place.image ? `background-image:url('${imageUrl(place)}')` : ''"
+                        @click="pickPlaceImage(place)"
+                        :title="place.image ? S.changePhoto : S.addPhoto"
+                      >
+                        <span x-show="!place.image">＋</span>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p
+                          class="font-medium text-sm truncate"
+                          :class="place.name ? 'text-white' : 'text-gray-400 italic'"
+                          x-text="place.name || S.placeDefaultLong"
+                        ></p>
+                        <p class="text-xs text-gray-500"
+                          x-text="place.last_used
+                            ? S.lastVisit + ' ' + formatDate(place.last_used) + ' · ' + place.count + '×'
+                            : (place.name ? S.notVisitedYet : S.placeDefaultHint)"
+                        ></p>
+                      </div>
+                      <button
+                        x-show="place.image"
+                        class="text-gray-600 hover:text-red-400 transition-colors text-sm shrink-0"
+                        @click="removePlaceImage(place)"
+                        :title="S.removePhoto"
+                      >🚫</button>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </template>
           </div>
         </div>
@@ -899,67 +1039,58 @@
             </div>
           </div>
 
-          <!-- Top 10 bar chart -->
-          <p class="section-label" x-text="S.statsTop10"></p>
+          <!-- Section tabs: cooked / eating out / ordered -->
+          <div class="flex gap-1 mb-3 bg-gray-900 rounded-xl p-1">
+            <template x-for="tab in statsTabs()" :key="tab.key">
+              <button
+                class="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+                :class="statsTab === tab.key ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'"
+                @click="statsTab = tab.key"
+              >
+                <span x-text="tab.label"></span>
+                <span class="text-xs font-normal opacity-70" x-text="statsData[tab.key].length"></span>
+              </button>
+            </template>
+          </div>
 
-          <template x-if="statsData.top_dishes.length === 0">
+          <template x-if="statsRows().length === 0">
             <p class="text-gray-500 italic text-sm text-center py-3" x-text="S.statsNoData"></p>
           </template>
 
-          <!-- Reusable bar chart via helper -->
-          <template x-if="statsData.top_dishes.length > 0">
-            <div class="flex flex-col gap-1.5 mb-4">
-              <template x-for="(dish, idx) in statsData.top_dishes" :key="'d'+dish.name">
-                <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
-                  <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
-                  <div class="min-w-0">
-                    <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
-                      :style="`width: ${Math.max(8, (dish.count / statsData.top_dishes[0].count) * 100)}%; background: linear-gradient(90deg, #16a34a, #22c55e);`"
-                    ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="dish.count + '×'"></span></div>
-                  </div>
-                  <span class="text-sm text-white truncate text-right" x-text="dish.name"></span>
-                </div>
-              </template>
-            </div>
-          </template>
-
-          <!-- Top eating out -->
-          <template x-if="statsData.top_eating_out && statsData.top_eating_out.length > 0">
-            <div class="mb-4">
-              <p class="section-label" x-text="S.statsTopEatingOut"></p>
-              <div class="flex flex-col gap-1.5">
-                <template x-for="(item, idx) in statsData.top_eating_out" :key="'e'+item.name">
-                  <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
-                    <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
-                    <div class="min-w-0">
-                      <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
-                        :style="`width: ${Math.max(8, (item.count / statsData.top_eating_out[0].count) * 100)}%; background: linear-gradient(90deg, #d97706, #f59e0b);`"
-                      ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
-                    </div>
-                    <span class="text-sm text-white truncate text-right" x-text="item.name"></span>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
-
-          <!-- Top orders -->
-          <template x-if="statsData.top_order && statsData.top_order.length > 0">
-            <div class="mb-4">
-              <p class="section-label" x-text="S.statsTopOrder"></p>
-              <div class="flex flex-col gap-1.5">
-                <template x-for="(item, idx) in statsData.top_order" :key="'o'+item.name">
-                  <div class="grid items-center gap-2" style="grid-template-columns: 1.2rem 1fr 55%;">
-                    <span class="text-xs text-gray-400 text-right" x-text="idx + 1"></span>
-                    <div class="min-w-0">
-                      <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]"
-                        :style="`width: ${Math.max(8, (item.count / statsData.top_order[0].count) * 100)}%; background: linear-gradient(90deg, #2563eb, #3b82f6);`"
-                      ><span class="text-xs font-bold text-white whitespace-nowrap" x-text="item.count + '×'"></span></div>
-                    </div>
-                    <span class="text-sm text-white truncate text-right" x-text="item.name"></span>
-                  </div>
-                </template>
-              </div>
+          <!-- Every entry, sortable by name, count and last date -->
+          <template x-if="statsRows().length > 0">
+            <div class="stats-scroll">
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th class="w-7 text-right">#</th>
+                    <th>
+                      <button class="sort-btn" @click="sortStats('name')"
+                        x-text="(statsTab === 'dishes' ? S.statsColDish : S.statsColPlace) + sortArrow('name')"></button>
+                    </th>
+                    <th class="stats-col-count">
+                      <button class="sort-btn" @click="sortStats('count')" x-text="S.statsColCount + sortArrow('count')"></button>
+                    </th>
+                    <th class="text-right">
+                      <button class="sort-btn" @click="sortStats('last_used')" x-text="S.statsColLast + sortArrow('last_used')"></button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(row, idx) in statsRows()" :key="statsTab + ':' + row.name.toLowerCase()">
+                    <tr>
+                      <td class="text-xs text-gray-400 text-right" x-text="idx + 1"></td>
+                      <td class="text-sm text-white"><span class="line-clamp-2" x-text="row.name"></span></td>
+                      <td>
+                        <div class="bar-fill h-6 rounded-md flex items-center px-2 min-w-[2rem]" :style="statsBarStyle(row)">
+                          <span class="text-xs font-bold text-white whitespace-nowrap" x-text="row.count + '×'"></span>
+                        </div>
+                      </td>
+                      <td class="text-xs text-gray-400 text-right whitespace-nowrap" x-text="formatDate(row.last_used)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </template>
         </div>
@@ -1043,6 +1174,14 @@
       addPhoto: 'Foto hinzufügen',
       changePhoto: 'Foto ändern',
       removePhoto: 'Foto entfernen',
+      photoAppliesTo: 'Gilt für:',
+      tabPlaces: 'Auswärts & Bestellt',
+      placesHint: 'Ein Foto gilt für jeden Tag mit diesem Namen. Das Standardfoto erscheint bei Tagen ohne Namen oder ohne eigenes Foto.',
+      placeDefault: 'ohne Namen',
+      placeDefaultLong: 'Standardfoto (ohne Namen)',
+      placeDefaultHint: 'Für Tage ohne Namen oder ohne eigenes Foto',
+      lastVisit: 'Zuletzt:',
+      notVisitedYet: 'Noch nicht besucht',
       cropTitle: 'Ausschnitt wählen',
       cropHint: 'Rahmen ziehen zum Verschieben, Ecken zum Vergrößern, Mausrad oder zwei Finger zum Zoomen.',
       cropSquare: 'Quadratisch',
@@ -1068,9 +1207,10 @@
       // Statistics
       statistics: 'Statistik',
       statsTitle: 'Koch-Statistik',
-      statsTop10: 'Top 10 Gerichte',
-      statsTopEatingOut: 'Top Auswärts',
-      statsTopOrder: 'Top Bestellt',
+      statsColDish: 'Gericht',
+      statsColPlace: 'Wo',
+      statsColCount: 'Wie oft',
+      statsColLast: 'Zuletzt',
       statsCooked: 'Gekocht',
       statsEatingOut: 'Auswärts',
       statsOrdered: 'Bestellt',
@@ -1159,6 +1299,14 @@
       addPhoto: 'Add photo',
       changePhoto: 'Change photo',
       removePhoto: 'Remove photo',
+      photoAppliesTo: 'Applies to:',
+      tabPlaces: 'Eating out & orders',
+      placesHint: 'A photo applies to every day with that name. The default photo shows on days without a name or without a photo of their own.',
+      placeDefault: 'unnamed',
+      placeDefaultLong: 'Default photo (unnamed)',
+      placeDefaultHint: 'For days without a name or a photo of their own',
+      lastVisit: 'Last:',
+      notVisitedYet: 'Not visited yet',
       cropTitle: 'Choose the crop',
       cropHint: 'Drag the frame to move it, the corners to resize, scroll or pinch to zoom.',
       cropSquare: 'Square',
@@ -1184,9 +1332,10 @@
       // Statistics
       statistics: 'Statistics',
       statsTitle: 'Cooking Statistics',
-      statsTop10: 'Top 10 Dishes',
-      statsTopEatingOut: 'Top Eating Out',
-      statsTopOrder: 'Top Orders',
+      statsColDish: 'Dish',
+      statsColPlace: 'Where',
+      statsColCount: 'How often',
+      statsColLast: 'Last',
       statsCooked: 'Cooked',
       statsEatingOut: 'Eating out',
       statsOrdered: 'Ordered',
@@ -1263,6 +1412,8 @@
         // Statistics
         showStats: false,
         statsData: null,
+        statsTab: 'dishes',                        // dishes | eating_out | order
+        statsSort: { key: 'count', dir: 'desc' },  // key: name | count | last_used
 
         // Move / swap
         showMove: false,
@@ -1273,7 +1424,9 @@
         showDishManager: false,
         allDishes: [],
         dishIndex: { byId: {}, byName: {} },
-        pendingImageDish: null,
+        places: [],      // eating-out / order places, with photos and visit counts
+        placeIndex: {},  // { type: { lowercased name: place } }
+        pendingImage: null,  // { kind: 'dish', dish } or { kind: 'place', type, name }, each with a label
         showCropper: false,
         cropAspect: 1,
         cropBusy: false,
@@ -1296,8 +1449,8 @@
               }
             }
           } catch(e) { /* keep browser default */ }
-          // Dishes carry the photos, so the overview needs them up front
-          await Promise.all([this.loadPlan(), this.loadDishes()]);
+          // Dishes and places carry the photos, so the overview needs them up front
+          await Promise.all([this.loadPlan(), this.loadDishes(), this.loadPlaces()]);
         },
 
         applyHATheme() {
@@ -1353,6 +1506,8 @@
               dayNum: d.getDate(),
               month: this.S.months[d.getMonth()],
               isToday: iso === todayISO,
+              isFuture: iso > todayISO,
+              isWeekend: wi >= 5,
               label: `${this.S.weekdaysLong[wi]}, ${d.getDate()}. ${this.S.months[d.getMonth()]}`,
             });
           }
@@ -1383,12 +1538,16 @@
         dayCardClass(day) {
           const p = this.plan[day.iso];
           let base;
-          if (day.isToday) base = p?.type === 'nothing' ? 'mp-day-today mp-day-nothing' : 'mp-day-today';
+          // Today keeps its highlight whatever is planned; the tag tells the rest
+          if (day.isToday) base = 'mp-day-today is-today';
           else if (!p) base = 'mp-day-default';
           else if (p.type === 'nothing') base = 'mp-day-nothing';
           else if (p.type === 'dish' || p.type === 'custom') base = 'mp-day-dish';
           else base = 'mp-day-default';
+          if (day.isFuture) base += ' is-future';
+          if (day.isWeekend) base += ' mp-day-weekend';
           if (this.holidays[day.iso]) base += ' mp-day-holiday';
+          if (this.dayImage(day)) base += ' has-photo';
           return base;
         },
         holidayName(day) {
@@ -1686,6 +1845,43 @@
             if (resp.ok) this.statsData = await resp.json();
           } catch(e) { console.error('stats fetch failed', e); }
         },
+        statsTabs() {
+          return [
+            { key: 'dishes',     label: this.S.statsCooked,    bar: ['#16a34a', '#22c55e'] },
+            { key: 'eating_out', label: this.S.statsEatingOut, bar: ['#d97706', '#f59e0b'] },
+            { key: 'order',      label: this.S.statsOrdered,   bar: ['#2563eb', '#3b82f6'] },
+          ];
+        },
+        statsRows() {
+          const rows = (this.statsData?.[this.statsTab] || []).slice();
+          const byName = (a, b) => a.name.localeCompare(b.name, this.lang);
+          const byDate = (a, b) => a.last_used < b.last_used ? -1 : a.last_used > b.last_used ? 1 : 0;
+          const primary = {
+            name: byName,
+            count: (a, b) => a.count - b.count || byDate(a, b),
+            last_used: (a, b) => byDate(a, b) || a.count - b.count,
+          }[this.statsSort.key];
+          const sign = this.statsSort.dir === 'asc' ? 1 : -1;
+          return rows.sort((a, b) => sign * primary(a, b) || byName(a, b));
+        },
+        sortStats(key) {
+          // Same column flips the direction; a new column starts where it is most useful
+          if (this.statsSort.key === key) {
+            this.statsSort = { key, dir: this.statsSort.dir === 'asc' ? 'desc' : 'asc' };
+          } else {
+            this.statsSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
+          }
+        },
+        sortArrow(key) {
+          if (this.statsSort.key !== key) return '';
+          return this.statsSort.dir === 'asc' ? ' ▲' : ' ▼';
+        },
+        statsBarStyle(row) {
+          const rows = this.statsData?.[this.statsTab] || [];
+          const max = Math.max(1, ...rows.map(r => r.count));
+          const [from, to] = this.statsTabs().find(t => t.key === this.statsTab).bar;
+          return `width: ${Math.max(8, (row.count / max) * 100)}%; background: linear-gradient(90deg, ${from}, ${to});`;
+        },
 
         async openDishManager() {
           this.showDishManager = true;
@@ -1754,36 +1950,104 @@
             || (entry.dish_name ? idx.byName[entry.dish_name.trim().toLowerCase()] : null)
             || null;
         },
-        imageUrl(dish) {
-          return dish && dish.image ? `${IMAGE_BASE}/${dish.image}` : '';
+        imageUrl(record) {
+          return record && record.image ? `${IMAGE_BASE}/${record.image}` : '';
         },
+
+        // ── Place photos (eating out / order) ──
+        async loadPlaces() {
+          try {
+            const resp = await fetch(`${API}/places`);
+            if (!resp.ok) return;
+            this.places = await resp.json();
+            const index = {};
+            for (const p of this.places) {
+              (index[p.type] ||= {})[p.name.trim().toLowerCase()] = p;
+            }
+            this.placeIndex = index;
+          } catch(e) {
+            console.error('Failed to load places', e);
+          }
+        },
+        placeRecord(type, name) {
+          return this.placeIndex[type]?.[(name || '').trim().toLowerCase()] || null;
+        },
+        placeFor(entry) {
+          // The place's own photo, otherwise the default photo of its type
+          const own = this.placeRecord(entry.type, entry.dish_name);
+          if (own?.image) return own;
+          const fallback = this.placeRecord(entry.type, '');
+          return fallback?.image ? fallback : null;
+        },
+        placeLabel(type, name) {
+          return name || `${this.typeLabel(type)} · ${this.S.placeDefault}`;
+        },
+        placesOfType(type) {
+          // Default row first, then the most visited
+          return this.places
+            .filter(p => p.type === type)
+            .sort((a, b) => (b.name === '') - (a.name === '')
+              || b.count - a.count
+              || a.name.localeCompare(b.name, this.lang));
+        },
+
         dayImage(day) {
           const entry = this.plan[day.iso];
-          // Photos only make sense for actual cooking entries
-          if (!entry || !['dish', 'custom'].includes(entry.type)) return '';
-          return this.imageUrl(this.dishFor(entry));
+          if (!entry) return '';
+          if (['dish', 'custom'].includes(entry.type)) return this.imageUrl(this.dishFor(entry));
+          if (['eating_out', 'order'].includes(entry.type)) return this.imageUrl(this.placeFor(entry));
+          return '';
         },
         activeDayImage() {
           return this.activeDay ? this.dayImage(this.activeDay) : '';
         },
-        pickDishImage(dish) {
-          this.pendingImageDish = dish;
-          this.$refs.dishImageInput.value = '';
-          this.$refs.dishImageInput.click();
+        activeDayPhotoTarget() {
+          // What a photo picked in the day dialog belongs to: the dish, or the place
+          const entry = this.activeDay && this.plan[this.activeDay.iso];
+          if (!entry) return null;
+          if (['dish', 'custom'].includes(entry.type)) {
+            const dish = this.dishFor(entry);
+            return dish ? { kind: 'dish', dish, label: dish.name, hasOwn: !!dish.image } : null;
+          }
+          if (['eating_out', 'order'].includes(entry.type)) {
+            const name = (entry.dish_name || '').trim();
+            return {
+              kind: 'place', type: entry.type, name,
+              label: this.placeLabel(entry.type, name),
+              hasOwn: !!this.placeRecord(entry.type, name)?.image,
+            };
+          }
+          return null;
         },
-        async onDishImageSelected(event) {
+
+        // ── Photo picking, shared by dishes and places ──
+        pickImage(target) {
+          this.pendingImage = target;
+          this.$refs.imageInput.value = '';
+          this.$refs.imageInput.click();
+        },
+        pickDishImage(dish) {
+          this.pickImage({ kind: 'dish', dish, label: dish.name });
+        },
+        pickPlaceImage(place) {
+          this.pickImage({
+            kind: 'place', type: place.type, name: place.name,
+            label: this.placeLabel(place.type, place.name),
+          });
+        },
+        async onImageSelected(event) {
           const file = event.target.files && event.target.files[0];
           event.target.value = '';
-          if (!file || !this.pendingImageDish) {
-            this.pendingImageDish = null;
+          if (!file || !this.pendingImage) {
+            this.pendingImage = null;
             return;
           }
           if (typeof window.Cropper === 'undefined') {
             // Cropper did not load — upload uncropped rather than blocking the user
-            const dish = this.pendingImageDish;
-            this.pendingImageDish = null;
+            const target = this.pendingImage;
+            this.pendingImage = null;
             try {
-              await this.uploadDishImage(dish, await this.downscaleImage(file, 1000, 0.82));
+              await this.uploadImage(target, await this.downscaleImage(file, 1000, 0.82));
             } catch(e) {
               alert(this.S.errorPrefix + (e.message || e));
             }
@@ -1791,14 +2055,36 @@
           }
           this.openCropper(file);
         },
-        async uploadDishImage(dish, blob) {
-          const resp = await fetch(`${API}/dishes/${dish.id}/image`, {
+        async uploadImage(target, blob) {
+          let url;
+          if (target.kind === 'dish') {
+            url = `${API}/dishes/${target.dish.id}/image`;
+          } else {
+            // The place record is created only now, so a cancelled pick leaves nothing behind
+            const resp = await fetch(`${API}/places`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: target.type, name: target.name }),
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            url = `${API}/places/${(await resp.json()).id}/image`;
+          }
+          const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'image/jpeg' },
             body: blob,
           });
           if (!resp.ok) throw new Error(await resp.text());
-          await this.loadDishes();
+          await (target.kind === 'dish' ? this.loadDishes() : this.loadPlaces());
+        },
+        async removePlaceImage(place) {
+          if (!place.id) return;
+          try {
+            await fetch(`${API}/places/${place.id}/image`, { method: 'DELETE' });
+            await this.loadPlaces();
+          } catch(e) {
+            console.error('Remove photo failed', e);
+          }
         },
 
         // ── Crop dialog ──
@@ -1865,11 +2151,11 @@
             URL.revokeObjectURL(this.cropObjectUrl);
             this.cropObjectUrl = null;
           }
-          this.pendingImageDish = null;
+          this.pendingImage = null;
         },
         async applyCrop() {
-          const dish = this.pendingImageDish;
-          if (!this.cropper || !dish) return;
+          const target = this.pendingImage;
+          if (!this.cropper || !target) return;
           this.cropBusy = true;
           try {
             // Capped here, so a 40 MP original never leaves the browser full size
@@ -1885,7 +2171,7 @@
               'image/jpeg',
               0.82
             ));
-            await this.uploadDishImage(dish, blob);
+            await this.uploadImage(target, blob);
             this.cancelCrop();
           } catch(e) {
             alert(this.S.errorPrefix + (e.message || e));

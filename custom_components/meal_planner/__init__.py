@@ -31,6 +31,7 @@ from .const import (
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
+    PLACE_TYPES,
     STORAGE_KEY,
     STORAGE_VERSION,
     TYPE_CUSTOM,
@@ -69,6 +70,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) 
     if data is None:
         data = _default_data()
         await store.async_save(data)
+    # Added in 1.8.0 — older stores simply start without place photos
+    data.setdefault("places", [])
 
     # Usage counters are derived from the plan — heals any drift from older versions
     _recompute_dish_usage(data)
@@ -90,6 +93,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MealPlannerConfigEntry) 
             MealPlannerDishView,
             MealPlannerDishImageView,
             MealPlannerDishImageFetchView,
+            MealPlannerPlacesView,
+            MealPlannerPlaceImageView,
             MealPlannerPlanView,
             MealPlannerDayView,
             MealPlannerMoveView,
@@ -277,10 +282,26 @@ def _remove_image(directory: Path, filename: str | None) -> None:
         _LOGGER.warning("Could not remove dish photo %s: %s", candidate, err)
 
 
+def _new_place(place_type: str, name: str) -> dict:
+    """Create a place record — it exists only to carry a photo."""
+    return {
+        "id": str(uuid.uuid4()),
+        "type": place_type,
+        "name": name,
+        "image": None,
+    }
+
+
+def _place_key(place_type: str, name: str | None) -> tuple[str, str]:
+    """Places match by type and case-insensitive name; "" is the type's default."""
+    return place_type, (name or "").strip().lower()
+
+
 def _default_data() -> dict:
     return {
         "dishes": [_new_dish(name) for name in DEFAULT_DISHES],
         "meal_plan": {},
+        "places": [],
     }
 
 
@@ -353,6 +374,35 @@ class MealPlannerBaseView(HomeAssistantView):
             return None
         return body if isinstance(body, dict) else None
 
+    async def read_image(self, request: web.Request) -> tuple[bytes, str] | web.Response:
+        """Return (payload, extension) of an uploaded photo, or an error response.
+
+        Expects the raw image bytes with a matching Content-Type. The panel
+        downscales and re-encodes in the browser, so no image library is
+        needed here.
+        """
+        content_type = (request.content_type or "").lower()
+        extension = IMAGE_CONTENT_TYPES.get(content_type)
+        if extension is None:
+            return self.json_message(
+                f"content type must be one of {sorted(IMAGE_CONTENT_TYPES)}",
+                status_code=415,
+            )
+
+        payload = await request.read()
+        if not payload:
+            return self.json_message("empty image body", status_code=400)
+        if len(payload) > MAX_IMAGE_BYTES:
+            return self.json_message(
+                f"image too large (max {MAX_IMAGE_BYTES // 1024 // 1024} MB)",
+                status_code=413,
+            )
+        if not _looks_like_image(payload, extension):
+            return self.json_message(
+                "payload does not look like an image", status_code=400
+            )
+        return payload, extension
+
 
 class MealPlannerDishesView(MealPlannerBaseView):
     """GET /api/meal_planner/dishes  – list all dishes.
@@ -411,9 +461,8 @@ class MealPlannerDishView(MealPlannerBaseView):
 class MealPlannerDishImageView(MealPlannerBaseView):
     """POST/DELETE /api/meal_planner/dishes/{dish_id}/image  – dish photo.
 
-    POST expects the raw image bytes with a matching Content-Type. The panel
-    downscales and re-encodes in the browser, so no image library is needed
-    here. Photos are optional: a dish without one simply has image = null.
+    POST expects the raw image bytes (see read_image). Photos are optional:
+    a dish without one simply has image = null.
     """
 
     url = "/api/meal_planner/dishes/{dish_id}/image"
@@ -425,26 +474,10 @@ class MealPlannerDishImageView(MealPlannerBaseView):
         if dish is None:
             return self.json_message("dish not found", status_code=404)
 
-        content_type = (request.content_type or "").lower()
-        extension = IMAGE_CONTENT_TYPES.get(content_type)
-        if extension is None:
-            return self.json_message(
-                f"content type must be one of {sorted(IMAGE_CONTENT_TYPES)}",
-                status_code=415,
-            )
-
-        payload = await request.read()
-        if not payload:
-            return self.json_message("empty image body", status_code=400)
-        if len(payload) > MAX_IMAGE_BYTES:
-            return self.json_message(
-                f"image too large (max {MAX_IMAGE_BYTES // 1024 // 1024} MB)",
-                status_code=413,
-            )
-        if not _looks_like_image(payload, extension):
-            return self.json_message(
-                "payload does not look like an image", status_code=400
-            )
+        upload = await self.read_image(request)
+        if isinstance(upload, web.Response):
+            return upload
+        payload, extension = upload
 
         # Random suffix busts the browser cache when a photo is replaced
         filename = f"{dish_id}_{uuid.uuid4().hex[:8]}{extension}"
@@ -534,6 +567,121 @@ class MealPlannerDishImageFetchView(MealPlannerBaseView):
         dish["image"] = filename
         await self.rt.store.async_save(data)
         return self.json(dish)
+
+
+class MealPlannerPlacesView(MealPlannerBaseView):
+    """GET  /api/meal_planner/places  – places known from the plan, with photos.
+    POST /api/meal_planner/places  – get or create the record for a place.
+
+    Eating out and ordering have no dish to hang a photo on, so a place
+    record carries it instead, matched by type and name. The record with an
+    empty name is that type's default photo, shown for unnamed days and for
+    places that have no photo of their own.
+    """
+
+    url = "/api/meal_planner/places"
+    name = "api:meal_planner:places"
+
+    async def get(self, request: web.Request) -> web.Response:
+        data = self.rt.data
+        meal_plan = data.get("meal_plan", {})
+        today_iso = date.today().isoformat()
+
+        def row(place_type: str, name: str) -> dict:
+            return {
+                "id": None, "type": place_type, "name": name,
+                "image": None, "count": 0, "last_used": None,
+            }
+
+        # The default row of each type is always offered
+        rows = {_place_key(t, ""): row(t, "") for t in PLACE_TYPES}
+        for day_iso in sorted(meal_plan):
+            plan_entry = meal_plan[day_iso]
+            place_type = plan_entry.get("type")
+            if place_type not in PLACE_TYPES:
+                continue
+            name = (plan_entry.get("dish_name") or "").strip()
+            item = rows.setdefault(_place_key(place_type, name), row(place_type, name))
+            item["name"] = name  # days are sorted, so the latest spelling wins
+            # Like the statistics: only days that have arrived count as visits
+            if day_iso <= today_iso:
+                item["count"] += 1
+                item["last_used"] = day_iso
+        for place in data.get("places", []):
+            key = _place_key(place["type"], place["name"])
+            item = rows.setdefault(key, row(place["type"], place["name"]))
+            item["id"] = place["id"]
+            item["image"] = place.get("image")
+        return self.json(list(rows.values()))
+
+    async def post(self, request: web.Request) -> web.Response:
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
+        place_type = body.get("type")
+        if place_type not in PLACE_TYPES:
+            return self.json_message(
+                f"type must be one of {list(PLACE_TYPES)}", status_code=400
+            )
+        name = (body.get("name") or "").strip()
+        if len(name) > 200:
+            return self.json_message("name too long (max 200 characters)", status_code=400)
+
+        data = self.rt.data
+        key = _place_key(place_type, name)
+        place = next(
+            (p for p in data["places"] if _place_key(p["type"], p["name"]) == key), None
+        )
+        if place is not None:
+            return self.json(place)
+        place = _new_place(place_type, name)
+        data["places"].append(place)
+        await self.rt.store.async_save(data)
+        return self.json(place, status_code=201)
+
+
+class MealPlannerPlaceImageView(MealPlannerBaseView):
+    """POST/DELETE /api/meal_planner/places/{place_id}/image  – place photo.
+
+    A place record exists only for its photo, so removing the photo removes
+    the record as well.
+    """
+
+    url = "/api/meal_planner/places/{place_id}/image"
+    name = "api:meal_planner:place_image"
+
+    async def post(self, request: web.Request, place_id: str) -> web.Response:
+        data = self.rt.data
+        place = next((p for p in data["places"] if p["id"] == place_id), None)
+        if place is None:
+            return self.json_message("place not found", status_code=404)
+
+        upload = await self.read_image(request)
+        if isinstance(upload, web.Response):
+            return upload
+        payload, extension = upload
+
+        filename = f"place_{place_id}_{uuid.uuid4().hex[:8]}{extension}"
+        await self.hass.async_add_executor_job(
+            _store_image, _image_dir(self.hass), filename, payload, place.get("image")
+        )
+        place["image"] = filename
+        await self.rt.store.async_save(data)
+        return self.json(place)
+
+    async def delete(self, request: web.Request, place_id: str) -> web.Response:
+        data = self.rt.data
+        place = next((p for p in data["places"] if p["id"] == place_id), None)
+        if place is None:
+            return self.json_message("place not found", status_code=404)
+
+        if image := place.get("image"):
+            await self.hass.async_add_executor_job(
+                _remove_image, _image_dir(self.hass), image
+            )
+        data["places"] = [p for p in data["places"] if p["id"] != place_id]
+        await self.rt.store.async_save(data)
+        return self.json_message("deleted")
 
 
 class MealPlannerPlanView(MealPlannerBaseView):
@@ -952,7 +1100,11 @@ class MealPlannerSettingsView(MealPlannerBaseView):
 
 
 class MealPlannerStatsView(MealPlannerBaseView):
-    """GET /api/meal_planner/stats – aggregated cooking statistics."""
+    """GET /api/meal_planner/stats – aggregated cooking statistics.
+
+    Every dish, eating-out place and order source planned up to today, each
+    with how often and when last, so the panel can sort the lists freely.
+    """
 
     url = "/api/meal_planner/stats"
     name = "api:meal_planner:stats"
@@ -961,13 +1113,13 @@ class MealPlannerStatsView(MealPlannerBaseView):
         data = self.rt.data
         meal_plan = data.get("meal_plan", {})
 
-        dish_counts: dict[str, int] = {}
-        out_counts: dict[str, int] = {}
-        order_counts: dict[str, int] = {}
-        total_cooked = 0
-        total_out = 0
-        total_order = 0
-        total_nothing = 0
+        # One tally per section, keyed case-insensitively
+        tallies: dict[str, dict[str, dict]] = {"dishes": {}, "eating_out": {}, "order": {}}
+        section_of = {
+            TYPE_DISH: "dishes", TYPE_CUSTOM: "dishes",
+            TYPE_EATING_OUT: "eating_out", TYPE_ORDER: "order",
+        }
+        totals = {"dishes": 0, "eating_out": 0, "order": 0, "nothing": 0}
         total_days = 0
 
         today_iso = date.today().isoformat()
@@ -976,35 +1128,41 @@ class MealPlannerStatsView(MealPlannerBaseView):
             if day_iso > today_iso:
                 continue
             total_days += 1
-            t = entry.get("type", "")
+            entry_type = entry.get("type", "")
+            if entry_type == TYPE_NOTHING:
+                totals["nothing"] += 1
+                continue
+            section = section_of.get(entry_type)
+            if section is None:
+                continue
+            totals[section] += 1
             name = (entry.get("dish_name") or "").strip()
-            if t in ("dish", "custom"):
-                total_cooked += 1
-                if name:
-                    dish_counts[name] = dish_counts.get(name, 0) + 1
-            elif t == "eating_out":
-                total_out += 1
-                if name:
-                    out_counts[name] = out_counts.get(name, 0) + 1
-            elif t == "order":
-                total_order += 1
-                if name:
-                    order_counts[name] = order_counts.get(name, 0) + 1
-            elif t == "nothing":
-                total_nothing += 1
+            if not name:
+                continue
+            item = tallies[section].setdefault(
+                name.lower(), {"name": name, "count": 0, "last_used": day_iso}
+            )
+            item["count"] += 1
+            if day_iso >= item["last_used"]:
+                # Show the spelling that was used most recently
+                item["last_used"] = day_iso
+                item["name"] = name
 
-        def top10(c: dict) -> list:
-            return [{"name": n, "count": v} for n, v in sorted(c.items(), key=lambda x: -x[1])[:10]]
+        def ranked(tally: dict[str, dict]) -> list[dict]:
+            # Most often first, ties broken by the more recent date
+            return sorted(
+                tally.values(), key=lambda i: (i["count"], i["last_used"]), reverse=True
+            )
 
         return self.json({
-            "top_dishes": top10(dish_counts),
-            "top_eating_out": top10(out_counts),
-            "top_order": top10(order_counts),
+            "dishes": ranked(tallies["dishes"]),
+            "eating_out": ranked(tallies["eating_out"]),
+            "order": ranked(tallies["order"]),
             "total_days": total_days,
-            "total_cooked": total_cooked,
-            "total_eating_out": total_out,
-            "total_order": total_order,
-            "total_nothing": total_nothing,
+            "total_cooked": totals["dishes"],
+            "total_eating_out": totals["eating_out"],
+            "total_order": totals["order"],
+            "total_nothing": totals["nothing"],
         })
 
 

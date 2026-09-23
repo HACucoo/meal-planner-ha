@@ -7,7 +7,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 ## Features
 
 - **Rolling 21-day view** — always shows yesterday−2 through today+18, no manual week navigation needed
-- **Responsive grid** — 3 × 7 layout on tablet/desktop, 2-column on mobile
+- **Responsive grid** — square cards, 3 × 7 on landscape tablets and desktops, 4 columns on portrait tablets, 2 on phones; today is highlighted, weekends get a neutral ring and holidays an amber one
 - **Smart suggestions** — randomly picked from the 10 dishes cooked longest ago, so you always get variety
 - **Accept / Skip / Block** — skip a dish just for today (↷), block it for 2 weeks (✕), or accept it (✓); accepted dishes get historized
 - **Dish picker dropdown** — A–Z sorted list of all your dishes right in the day modal, alongside the free-text field
@@ -16,7 +16,8 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 - **Surprise me 🎲** — fetches a random recipe from [TheMealDB](https://www.themealdb.com/) (free, no API key needed)
 - **Chefkoch 👨‍🍳** — pulls a random German recipe (name + image) from Chefkoch's recipe API
 - **Dish manager** — add, remove, or bulk-edit your dish list; blocked dishes can be unblocked early
-- **Dish photos** — give a dish a picture and it appears behind that day's card, dimmed with the text on translucent bubbles; entirely optional, a plain text-only list keeps working
+- **Photos** — give a dish, a restaurant or a delivery service a picture and it appears behind that day's card, with the text on translucent bubbles; entirely optional, a plain text-only list keeps working
+- **Statistics** — every dish, restaurant and delivery service ever planned, sortable by name, how often and when last
 - **History export** — download your full meal history as CSV
 - **DE / EN localisation** — configured in the integration options (browser language as fallback)
 - **Persistent storage** — all data saved in Home Assistant's `.storage/` directory
@@ -59,14 +60,19 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 | Manage dish list | Tap "Manage dish list" at the bottom |
 | Add or change a dish photo | Manage dish list → tap the tile to the left of the dish |
 | Remove a dish photo | Manage dish list → tap 🚫 on that row |
+| Photo for eating out / order | Tap the planned day → "Add photo", or Manage dish list → "Eating out & orders" |
+| Statistics | Tap "Statistics" at the bottom; tap a column header to sort, again to flip the order |
 | Switch language | Settings → Devices & Services → Meal Planner → Configure |
 | Export history | Tap "History as CSV" at the bottom |
 
 ---
 
-## Dish photos
+## Photos
 
-Photos are optional. A dish without one looks exactly as before, so you can keep the list as plain text.
+Photos are optional. A day without one looks exactly as before, so you can keep everything as plain text.
+
+- How strongly a photo is dimmed depends on the day: past days are dimmed the most, upcoming days less, and today shows its photo at full strength.
+- Eating out and ordering have no dish, so their photo belongs to the **name** you gave the day ("Pizzeria Luigi", "Sushi Bar") and shows on every day with that name. Each type also has a **default photo** for days without a name, or whose name has no photo of its own. Both can be set from the planned day or from Manage dish list → "Eating out & orders".
 
 - Picking a file opens a **crop dialog**, the same idea as Home Assistant's own user-picture upload: drag the frame, pinch or scroll to zoom, rotate, and switch between a square and a free crop. If the cropper cannot be loaded, the photo is uploaded uncropped instead of blocking you.
 - Pictures are scaled down **in the browser** before upload (longest edge 1000 px, JPEG), so a phone photo arrives as a few dozen kilobytes and no image library is needed on the Home Assistant side.
