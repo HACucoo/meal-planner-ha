@@ -18,6 +18,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 - **Dish manager** — add, remove, or bulk-edit your dish list; blocked dishes can be unblocked early
 - **Photos** — give a dish, a restaurant or a delivery service a picture and it appears behind that day's card, with the text on translucent bubbles; entirely optional, a plain text-only list keeps working
 - **Statistics** — every dish, restaurant and delivery service ever planned, sortable by name, how often and when last
+- **Dashboard cards** — the next meals as slim photo rows, or a compact 7-day list; the photo card has a visual editor and opens the planner on tap
 - **History export** — download your full meal history as CSV
 - **DE / EN localisation** — configured in the integration options (browser language as fallback)
 - **Persistent storage** — all data saved in Home Assistant's `.storage/` directory
@@ -107,11 +108,14 @@ The entity IDs are generated from the Home Assistant interface language when the
 
 ---
 
-## Lovelace List Card
+## Lovelace Cards
 
-A compact 7-day list card is included — ideal for a portrait sidebar or a small dashboard tile.
+Two cards are included, both in the same file, so they cost one resource:
 
-**1. Register the resource (once per dashboard)**
+- **Upcoming meals** (`custom:meal-planner-upcoming-card`): the next meals as slim rows, each filled with the photo of its dish or place, with weekday and date, the name, and Today / Tomorrow / in N days on the right. Tapping it opens the Meal Planner.
+- **List** (`custom:meal-planner-list-card`): a compact text list of 7 days.
+
+**1. Register the resource (once, it applies to every dashboard)**
 
 Go to your dashboard → ⋮ menu → **Edit dashboard** → **Manage resources** → **Add resource**:
 
@@ -120,9 +124,25 @@ Go to your dashboard → ⋮ menu → **Edit dashboard** → **Manage resources*
 | URL | `/meal_planner_frontend/meal-planner-card.js` |
 | Resource type | JavaScript module |
 
-**2. Add the card**
+After an update, a browser or wall tablet may keep the old file cached. Adding a version to the URL, for example `/meal_planner_frontend/meal-planner-card.js?v=1.8.0`, makes it load the new one.
 
-In the card picker choose **Manual** and paste:
+**2. Add a card**
+
+The **upcoming meals** card appears in the card picker as *Meal Planner – Nächste Gerichte* and can be set up entirely in its visual editor. In YAML:
+
+```yaml
+type: custom:meal-planner-upcoming-card
+title: Nächste Gerichte   # optional heading
+days: 7                   # 1–21 days from today
+relative: all             # right-hand badge: all, near (Today/Tomorrow only) or none
+show_empty: false         # also list unplanned and "no cooking" days
+navigate: true            # tapping opens the Meal Planner panel
+lang: de                  # optional: "de" or "en" (default: browser language)
+```
+
+Days without a plan, and "no cooking" days, are left out unless `show_empty` is on. Rows without a photo get a faint tint of their type instead.
+
+The **list** card, via **Manual** in the card picker:
 
 ```yaml
 type: custom:meal-planner-list-card
@@ -130,7 +150,9 @@ title: Diese Woche   # optional heading
 lang: de             # optional: "de" or "en" (default: browser language)
 ```
 
-The card shows **7 days**: yesterday · today (highlighted) · next 5 days, each with a weekday abbreviation and the planned meal. It refreshes automatically every 5 minutes.
+It shows **7 days**: yesterday · today (highlighted) · next 5 days, each with a weekday abbreviation and the planned meal.
+
+Both cards refresh every 5 minutes and as soon as the plan for today or tomorrow changes.
 
 ---
 

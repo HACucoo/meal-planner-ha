@@ -3,9 +3,19 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.0] - 2026-09-23
 
 ### Added
+- **Upcoming meals card** (`custom:meal-planner-upcoming-card`): the next
+  meals as slim rows, each filled with the photo of its dish or place, with
+  weekday and date, the name, a badge for eating out / order, and Today /
+  Tomorrow / in N days on the right.
+  - Tapping it opens the Meal Planner panel (`navigate: false` turns that off).
+  - Visual editor: heading, number of days (1–21), which day badges to show
+    (`relative: all | near | none`), whether to list empty days.
+  - Shipped in the existing `meal-planner-card.js`, so no additional resource
+    is loaded on every dashboard, and kept free of CSS that old wall-tablet
+    browsers lack.
 - **Photos for eating out and ordering.** The picture belongs to the name of
   the day ("Pizzeria Luigi") and shows on every day with that name. Each type
   also has a default photo for unnamed days or names without their own.
@@ -37,6 +47,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - The panel loaded all data twice on every open (Alpine called `init()` on
   its own and once more through `x-init`).
 - Hovering a holiday card no longer hides its ring.
+- After copying new files without restarting Home Assistant, saving a photo
+  for eating out / order failed with a bare 404. The panel now hides that
+  button while the old backend still runs and says a restart is needed.
 
 ## [1.7.0] - 2026-09-22
 
