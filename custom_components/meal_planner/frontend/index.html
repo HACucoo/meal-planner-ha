@@ -250,18 +250,16 @@
       z-index: 2;
     }
 
-    /* Weekend and holiday markers — a ring laid on top of any other variant,
-       drawn as box-shadow so border-radius and borders stay intact. The
-       weekend ring is neutral; a holiday (declared later) replaces it with amber. */
-    .mp-day-weekend {
-      --mp-ring: 0 0 0 2px var(--mp-weekend-color),
-                 0 0 0 4px color-mix(in srgb, var(--mp-weekend-color) 25%, transparent);
-    }
+    /* Weekend: the card keeps its own border colour, the border just gets
+       thicker. Declared after the variants so the width wins. */
+    .mp-day-weekend { border-width: 3px; }
+
+    /* Holiday marker — amber ring laid on top of any other variant, drawn as
+       box-shadow so border-radius and borders stay intact. */
     .mp-day-holiday {
       --mp-ring: 0 0 0 2px var(--mp-holiday-color, #f59e0b),
                  0 0 0 4px color-mix(in srgb, var(--mp-holiday-color, #f59e0b) 25%, transparent);
     }
-    :root { --mp-weekend-color: color-mix(in srgb, var(--mp-text) 50%, transparent); }
     .mp-day-holiday-label {
       font-size: 0.65rem;
       font-weight: 600;

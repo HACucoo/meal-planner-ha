@@ -7,7 +7,7 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 ## Features
 
 - **Rolling 21-day view** — always shows yesterday−2 through today+18, no manual week navigation needed
-- **Responsive grid** — square cards, 3 × 7 on landscape tablets and desktops, 4 columns on portrait tablets, 2 on phones; today is highlighted, weekends get a neutral ring and holidays an amber one
+- **Responsive grid** — square cards, 3 × 7 on landscape tablets and desktops, 4 columns on portrait tablets, 2 on phones; today is highlighted, weekends get a thicker border and holidays an amber ring
 - **Smart suggestions** — randomly picked from the 10 dishes cooked longest ago, so you always get variety
 - **Accept / Skip / Block** — skip a dish just for today (↷), block it for 2 weeks (✕), or accept it (✓); accepted dishes get historized
 - **Dish picker dropdown** — A–Z sorted list of all your dishes right in the day modal, alongside the free-text field

@@ -25,8 +25,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   three rows of squares can be tall, so it still never forces a scrollbar.
   Narrower tablets show four columns instead of seven, where square cards
   would have been too small for the text.
-- **Weekends get a ring** in the same style as holidays, but neutral. A
-  holiday on a weekend keeps its amber ring.
+- **Weekends get a thicker border** in the card's usual colour. A holiday on
+  a weekend adds its amber ring on top.
 - **Statistics show everything**: all dishes, restaurants and delivery
   services instead of a top 10, each with how often and when last, sortable
   by clicking a column header. The `/api/meal_planner/stats` response now has
