@@ -885,9 +885,37 @@
             <button class="btn btn-success shrink-0" @click="addDish()" x-text="S.add"></button>
           </div>
 
-          <!-- Dish list -->
-          <div class="max-h-[55vh] overflow-y-auto space-y-1 pr-1">
-            <template x-for="dish in allDishes" :key="dish.id">
+          <!-- Search: narrows the list below while typing -->
+          <div class="relative mb-2" x-show="allDishes.length > 0">
+            <input
+              type="text"
+              enterkeyhint="search"
+              x-model="dishSearch"
+              :placeholder="S.searchDishes"
+              class="w-full bg-gray-800 border border-gray-600 rounded-xl pl-9 pr-9 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
+              @keydown.escape.stop="dishSearch = ''"
+            />
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none">🔍</span>
+            <button
+              x-show="dishSearch"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-lg leading-none px-1"
+              @click="dishSearch = ''"
+              :title="S.clearSearch"
+            >×</button>
+          </div>
+          <p
+            x-show="dishSearch.trim()"
+            class="text-xs text-gray-500 mb-2"
+            x-text="S.searchCount(filteredDishes().length, allDishes.length)"
+          ></p>
+
+          <!-- Dish list. While searching it keeps its height, so the centred
+               dialog does not shrink and pull the search field from under the finger. -->
+          <div
+            class="max-h-[55vh] overflow-y-auto space-y-1 pr-1"
+            :style="dishSearch.trim() ? 'min-height:55vh' : ''"
+          >
+            <template x-for="dish in filteredDishes()" :key="dish.id">
               <div class="flex items-center gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
                 <!-- Photo: click to set or replace -->
                 <div
@@ -929,6 +957,9 @@
             </template>
             <template x-if="allDishes.length === 0">
               <p class="text-gray-500 italic text-sm text-center py-6" x-text="S.noDishes"></p>
+            </template>
+            <template x-if="allDishes.length > 0 && filteredDishes().length === 0">
+              <p class="text-gray-500 italic text-sm text-center py-6" x-text="S.noSearchResults"></p>
             </template>
           </div>
         </div>
@@ -1169,6 +1200,10 @@
       newDishPlaceholder: 'Neues Gericht…',
       add: '+ Hinzufügen',
       noDishes: 'Keine Gerichte vorhanden.',
+      searchDishes: 'Gericht suchen…',
+      clearSearch: 'Suche leeren',
+      searchCount: (n, total) => `${n} von ${total} Gerichten`,
+      noSearchResults: 'Kein Gericht passt zur Suche.',
       deleteDish: 'Gericht löschen',
       blockedUntil: 'Gesperrt bis:',
       unblock: 'Freigeben',
@@ -1295,6 +1330,10 @@
       newDishPlaceholder: 'New dish…',
       add: '+ Add',
       noDishes: 'No dishes yet.',
+      searchDishes: 'Search dishes…',
+      clearSearch: 'Clear search',
+      searchCount: (n, total) => `${n} of ${total} dishes`,
+      noSearchResults: 'No dish matches the search.',
       deleteDish: 'Delete dish',
       blockedUntil: 'Blocked until:',
       unblock: 'Unblock',
@@ -1439,6 +1478,7 @@
         cropper: null,
         cropObjectUrl: null,
         newDishName: '',
+        dishSearch: '',
         dishManagerTab: 'list',
         bulkText: '',
 
@@ -1579,6 +1619,16 @@
         },
 
         // ── Modal ──
+        filteredDishes() {
+          // Every typed word must appear; case and accents are ignored
+          const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+          const words = fold(this.dishSearch).split(/\s+/).filter(Boolean);
+          if (!words.length) return this.allDishes;
+          return this.allDishes.filter(d => {
+            const name = fold(d.name);
+            return words.every(w => name.includes(w));
+          });
+        },
         sortedDishes() {
           return this.allDishes.slice().sort((a, b) => a.name.localeCompare(b.name, this.lang));
         },
@@ -1892,6 +1942,7 @@
         async openDishManager() {
           this.showDishManager = true;
           this.dishManagerTab = 'list';
+          this.dishSearch = '';
           await this.loadDishes();
         },
         openBulkEdit() {

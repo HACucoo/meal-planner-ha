@@ -380,7 +380,8 @@ class MealPlannerUpcomingCard extends MealPlannerBaseCard {
         .row.has-photo::after {
           content: "";
           position: absolute; inset: 0;
-          background: linear-gradient(90deg, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.62) 55%, rgba(0,0,0,0.30) 100%);
+          /* Dark behind the text, the photo at full brightness on the right edge */
+          background: linear-gradient(90deg, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0) 100%);
         }
         .row.has-photo { color: #fff; border-color: rgba(255,255,255,0.10); }
         .row > :not(.bg) { position: relative; z-index: 1; }
