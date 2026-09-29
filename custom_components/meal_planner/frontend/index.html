@@ -927,7 +927,26 @@
                   <span x-show="!dish.image">＋</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="font-medium text-white text-sm truncate" x-text="dish.name"></p>
+                  <!-- Name, editable in place: rename keeps the dish, its photo and its history.
+                       Selecting waits a tick: x-init runs before x-model has filled the field. -->
+                  <template x-if="editingDishId !== dish.id">
+                    <p
+                      class="font-medium text-white text-sm truncate"
+                      x-text="dish.name"
+                      @dblclick="startRenameDish(dish)"
+                    ></p>
+                  </template>
+                  <template x-if="editingDishId === dish.id">
+                    <input
+                      type="text"
+                      x-model="editingDishName"
+                      x-init="setTimeout(() => { $el.focus(); $el.select(); })"
+                      maxlength="200"
+                      class="w-full bg-gray-900 border border-blue-500 rounded-lg px-2 py-1 text-white text-sm focus:outline-none"
+                      @keydown.enter.prevent="saveRenameDish(dish)"
+                      @keydown.escape.stop.prevent="cancelRenameDish()"
+                    />
+                  </template>
                   <p class="text-xs text-gray-500"
                     x-text="dish.blocked_until && dish.blocked_until > today
                       ? S.blockedUntil + ' ' + formatDate(dish.blocked_until)
@@ -936,23 +955,48 @@
                         : S.neverCooked"
                   ></p>
                 </div>
-                <button
-                  x-show="dish.image"
-                  class="text-gray-600 hover:text-red-400 transition-colors text-sm shrink-0"
-                  @click="removeDishImage(dish)"
-                  :title="S.removePhoto"
-                >🚫</button>
-                <button
-                  x-show="dish.blocked_until && dish.blocked_until > today"
-                  class="btn btn-neutral text-xs px-2 py-1 shrink-0"
-                  @click="unblockDish(dish)"
-                  x-text="S.unblock"
-                ></button>
-                <button
-                  class="text-gray-600 hover:text-red-400 transition-colors text-base shrink-0 ml-1"
-                  @click="deleteDish(dish.id)"
-                  :title="S.deleteDish"
-                >✕</button>
+                <!-- While renaming only save / cancel, so the delete ✕ cannot be hit by mistake -->
+                <template x-if="editingDishId === dish.id">
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      class="btn btn-success text-xs px-2 py-1"
+                      @click="saveRenameDish(dish)"
+                      :disabled="renameBusy"
+                      :title="S.save"
+                    >✓</button>
+                    <button
+                      class="btn btn-neutral text-xs px-2 py-1"
+                      @click="cancelRenameDish()"
+                      :title="S.cancel"
+                    >↺</button>
+                  </div>
+                </template>
+                <template x-if="editingDishId !== dish.id">
+                  <div class="flex items-center gap-3 shrink-0">
+                    <button
+                      class="text-gray-600 hover:text-gray-300 transition-colors text-sm"
+                      @click="startRenameDish(dish)"
+                      :title="S.renameDish"
+                    >✏️</button>
+                    <button
+                      x-show="dish.image"
+                      class="text-gray-600 hover:text-red-400 transition-colors text-sm"
+                      @click="removeDishImage(dish)"
+                      :title="S.removePhoto"
+                    >🚫</button>
+                    <button
+                      x-show="dish.blocked_until && dish.blocked_until > today"
+                      class="btn btn-neutral text-xs px-2 py-1"
+                      @click="unblockDish(dish)"
+                      x-text="S.unblock"
+                    ></button>
+                    <button
+                      class="text-gray-600 hover:text-red-400 transition-colors text-base"
+                      @click="deleteDish(dish.id)"
+                      :title="S.deleteDish"
+                    >✕</button>
+                  </div>
+                </template>
               </div>
             </template>
             <template x-if="allDishes.length === 0">
@@ -1204,6 +1248,8 @@
       clearSearch: 'Suche leeren',
       searchCount: (n, total) => `${n} von ${total} Gerichten`,
       noSearchResults: 'Kein Gericht passt zur Suche.',
+      renameDish: 'Umbenennen (Foto und Historie bleiben)',
+      renameNeedsRestart: 'Home Assistant muss nach dem Update noch neu gestartet werden.',
       deleteDish: 'Gericht löschen',
       blockedUntil: 'Gesperrt bis:',
       unblock: 'Freigeben',
@@ -1231,7 +1277,7 @@
       cropSaving: 'Wird gespeichert…',
       imageEncodeFailed: 'Bild konnte nicht verarbeitet werden.',
       imageReadFailed: 'Datei ist kein lesbares Bild.',
-      bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten. Fotos hängen am Gericht: Wird ein Name hier geändert, gilt das als neues Gericht und das Foto geht verloren.',
+      bulkHint: 'Ein Gericht pro Zeile. Neue Zeilen werden hinzugefügt, gelöschte Zeilen werden entfernt. Historie & Sperren bleiben erhalten. Ein hier geänderter Name gilt als neues Gericht, Foto und Zähler gehen verloren. Zum Umbenennen ✏️ in der Liste nutzen.',
       bulkPlaceholder: 'Spaghetti Bolognese\nHähnchen-Curry\n…',
       bulkSave: 'Speichern',
       cancel: 'Abbrechen',
@@ -1334,6 +1380,8 @@
       clearSearch: 'Clear search',
       searchCount: (n, total) => `${n} of ${total} dishes`,
       noSearchResults: 'No dish matches the search.',
+      renameDish: 'Rename (photo and history stay)',
+      renameNeedsRestart: 'Home Assistant still needs a restart after the update.',
       deleteDish: 'Delete dish',
       blockedUntil: 'Blocked until:',
       unblock: 'Unblock',
@@ -1361,7 +1409,7 @@
       cropSaving: 'Saving…',
       imageEncodeFailed: 'Could not process the image.',
       imageReadFailed: 'That file is not a readable image.',
-      bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved. Photos belong to a dish: renaming one here counts as a new dish and loses its photo.',
+      bulkHint: 'One dish per line. New lines are added, removed lines are deleted. History & blocks are preserved. A name changed here counts as a new dish and loses its photo and counts. To rename, use ✏️ in the list.',
       bulkPlaceholder: 'Spaghetti Bolognese\nChicken Curry\n…',
       bulkSave: 'Save',
       cancel: 'Cancel',
@@ -1479,6 +1527,9 @@
         cropObjectUrl: null,
         newDishName: '',
         dishSearch: '',
+        editingDishId: null,
+        editingDishName: '',
+        renameBusy: false,
         dishManagerTab: 'list',
         bulkText: '',
 
@@ -1943,6 +1994,7 @@
           this.showDishManager = true;
           this.dishManagerTab = 'list';
           this.dishSearch = '';
+          this.editingDishId = null;
           await this.loadDishes();
         },
         openBulkEdit() {
@@ -2285,6 +2337,40 @@
             await this.loadDishes();
           } catch(e) {
             alert(this.S.errorPrefix + e.message);
+          }
+        },
+        // ── Rename in place ──
+        startRenameDish(dish) {
+          this.editingDishId = dish.id;
+          this.editingDishName = dish.name;
+        },
+        cancelRenameDish() {
+          this.editingDishId = null;
+          this.editingDishName = '';
+        },
+        async saveRenameDish(dish) {
+          const name = this.editingDishName.trim();
+          if (!name || name === dish.name) { this.cancelRenameDish(); return; }
+          this.renameBusy = true;
+          try {
+            const resp = await fetch(`${API}/dishes/${dish.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+            if (resp.status === 409) { alert(this.S.dishAlreadyExists); return; }
+            if (resp.status === 405 || resp.status === 404) {
+              // 405: the files are new but HA still runs the old backend
+              throw new Error(resp.status === 405 ? this.S.renameNeedsRestart : await resp.text());
+            }
+            if (!resp.ok) throw new Error(await resp.text());
+            this.cancelRenameDish();
+            // Planned days carry the name too, so the week view needs a refresh
+            await Promise.all([this.loadDishes(), this.loadPlan()]);
+          } catch(e) {
+            alert(this.S.errorPrefix + e.message);
+          } finally {
+            this.renameBusy = false;
           }
         },
         async deleteDish(id) {

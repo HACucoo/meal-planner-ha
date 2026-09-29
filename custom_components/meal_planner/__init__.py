@@ -439,10 +439,64 @@ class MealPlannerDishesView(MealPlannerBaseView):
 
 
 class MealPlannerDishView(MealPlannerBaseView):
-    """DELETE /api/meal_planner/dishes/{dish_id}  – remove a dish."""
+    """PATCH  /api/meal_planner/dishes/{dish_id}  – rename a dish.
+    DELETE /api/meal_planner/dishes/{dish_id}  – remove a dish."""
 
     url = "/api/meal_planner/dishes/{dish_id}"
     name = "api:meal_planner:dish"
+
+    async def patch(self, request: web.Request, dish_id: str) -> web.Response:
+        """Rename in place: id, photo, block and history stay with the dish.
+
+        Plan entries keep a copy of the name (statistics and the CSV count by
+        it), so every day that belongs to the dish is renamed too. That is
+        each entry linked by dish_id, plus unlinked entries carrying the old
+        name, which usage tracking already attributes to this dish.
+        """
+        body = await self.read_json(request)
+        if body is None:
+            return self.json_message("invalid JSON body", status_code=400)
+        name = (body.get("name") or "").strip()
+        if not name:
+            return self.json_message("name is required", status_code=400)
+        if len(name) > 200:
+            return self.json_message("name too long (max 200 characters)", status_code=400)
+
+        data = self.rt.data
+        dish = next((d for d in data["dishes"] if d["id"] == dish_id), None)
+        if dish is None:
+            return self.json_message("not found", status_code=404)
+        # A pure case change of the same dish is fine; clashing with another is not
+        if any(
+            d["id"] != dish_id and d["name"].lower() == name.lower()
+            for d in data["dishes"]
+        ):
+            return self.json_message("dish already exists", status_code=409)
+
+        old_key = dish["name"].strip().lower()
+        existing_ids = {d["id"] for d in data["dishes"]}
+        renamed_days = 0
+        for plan_entry in data.get("meal_plan", {}).values():
+            if plan_entry.get("type") not in (TYPE_DISH, TYPE_CUSTOM):
+                continue
+            linked = plan_entry.get("dish_id") == dish_id
+            # Same rule as _recompute_dish_usage: no id, or the id of a deleted
+            # dish, falls back to the name
+            by_name = (
+                plan_entry.get("dish_id") not in existing_ids
+                and (plan_entry.get("dish_name") or "").strip().lower() == old_key
+            )
+            if linked or by_name:
+                plan_entry["dish_name"] = name
+                plan_entry["dish_id"] = dish_id
+                renamed_days += 1
+
+        dish["name"] = name
+        _recompute_dish_usage(data)
+        await self.rt.store.async_save(data)
+        # Today's / tomorrow's sensors show the name
+        _push_sensor_update(self.rt)
+        return self.json({**dish, "renamed_days": renamed_days})
 
     async def delete(self, request: web.Request, dish_id: str) -> web.Response:
         data = self.rt.data

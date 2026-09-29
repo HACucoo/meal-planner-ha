@@ -3,6 +3,20 @@
 All notable changes to this project are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Rename a dish in place** (✏️ in the dish list, or double-click the name).
+  The dish keeps its id, photo, block and history, and every planned day that
+  belongs to it takes the new name, so statistics and the CSV export carry on
+  as one entry. `PATCH /api/meal_planner/dishes/{id}` with `{"name": …}`.
+- **Search in the dish list**: narrows the list while typing; every word must
+  appear, case and accents are ignored.
+
+### Changed
+- Upcoming meals card: the photo reaches full brightness at the right edge;
+  only the text side is darkened.
+
 ## [1.8.0] - 2026-09-23
 
 ### Added

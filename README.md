@@ -59,6 +59,8 @@ A HACS integration that adds a touch-friendly dinner planner to your Home Assist
 | Edit a planned day | Tap the day card → "Change" |
 | Move or swap a planned meal | Tap the day card → "Move / swap", then pick a day (empty = move, occupied = swap) |
 | Manage dish list | Tap "Manage dish list" at the bottom |
+| Find a dish | Manage dish list → type into the search field; every word must match, case and accents are ignored |
+| Rename a dish | Manage dish list → ✏️ (or double-click the name), Enter to save; photo, history and statistics stay with it |
 | Add or change a dish photo | Manage dish list → tap the tile to the left of the dish |
 | Remove a dish photo | Manage dish list → tap 🚫 on that row |
 | Photo for eating out / order | Tap the planned day → "Add photo", or Manage dish list → "Eating out & orders" |
@@ -78,7 +80,7 @@ Photos are optional. A day without one looks exactly as before, so you can keep 
 - Picking a file opens a **crop dialog**, the same idea as Home Assistant's own user-picture upload: drag the frame, pinch or scroll to zoom, rotate, and switch between a square and a free crop. If the cropper cannot be loaded, the photo is uploaded uncropped instead of blocking you.
 - Pictures are scaled down **in the browser** before upload (longest edge 1000 px, JPEG), so a phone photo arrives as a few dozen kilobytes and no image library is needed on the Home Assistant side.
 - They are stored in `config/meal_planner_images/` and are therefore included in Home Assistant backups.
-- A photo belongs to its dish. Renaming a dish in **bulk edit** counts as deleting one dish and creating another, so the photo is lost. Renaming the dish row itself keeps it.
+- A photo belongs to its dish. Renaming a dish with ✏️ in the list keeps it, together with the dish's history. Renaming it in **bulk edit** counts as deleting one dish and creating another, so the photo is lost.
 - Accepting a **Surprise me** or **Chefkoch** recipe takes its picture along automatically. A photo you set yourself is never overwritten by this, and only those two recipe sources may be downloaded from.
 
 ---
