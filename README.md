@@ -158,6 +158,18 @@ Both cards refresh every 5 minutes and as soon as the plan for today or tomorrow
 
 ---
 
+## Development
+
+`dev/mock_server.py` serves the panel and the cards against the **real** backend code, with Home Assistant and aiohttp stubbed out, so changes can be tried in a browser without an HA instance. It needs only Python's standard library.
+
+```bash
+python dev/mock_server.py
+```
+
+Then open `http://localhost:8124` for the panel and `http://localhost:8124/dev/cards.html` for the Lovelace cards. Demo data (dishes with photos, eating out, orders, about ten weeks of history) is reseeded on every start into `dev/.mock-data/`, which git ignores.
+
+---
+
 ## Requirements
 
 - Home Assistant 2023.x or newer

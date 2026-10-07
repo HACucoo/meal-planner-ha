@@ -16,11 +16,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - Upcoming meals card: the photo reaches full brightness at the right edge;
   only the text side is darkened.
-- **Suggestions in the day dialog are folded away** behind their heading and
-  load only when unfolded, so the dialog is calmer and opens at once instead
-  of waiting for them.
+- **Suggestions in the day dialog are folded away** behind a "Suggestions"
+  heading, together with the Surprise me and Chefkoch buttons. They load only
+  when unfolded, so the dialog is calmer and opens at once instead of waiting.
 - **Move / swap is a button** next to Change and Delete (on phones in a row of
   its own) instead of a small text link.
+
+### Development
+- `dev/mock_server.py`: the panel and cards in a browser against the real
+  backend code, no Home Assistant needed; `dev/cards.html` shows the cards.
 
 ## [1.8.0] - 2026-09-23
 

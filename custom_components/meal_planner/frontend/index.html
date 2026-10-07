@@ -657,7 +657,8 @@
 
               <div class="divider" style="margin:0.5rem 0"></div>
 
-              <!-- Suggestions: folded away by default, so the dialog stays calm -->
+              <!-- Suggestions and the recipe dice: folded away by default, so the
+                   dialog stays calm. Suggestions load on the first unfold. -->
               <button
                 type="button"
                 class="section-toggle"
@@ -669,103 +670,102 @@
               </button>
 
               <template x-if="showSuggestions">
-              <div class="mt-1">
-              <template x-if="loadingSuggestions">
-                <p class="text-gray-500 text-sm py-2 text-center">⏳ <span x-text="S.loadingSuggestions"></span></p>
-              </template>
-              <template x-if="!loadingSuggestions">
-              <div>
-              <template x-for="dish in suggestions" :key="dish.id">
-                <div class="suggestion-card">
-                  <!-- Dish info -->
-                  <div class="dish-info">
-                    <p class="font-semibold text-white text-sm leading-snug" x-text="dish.name"></p>
-                    <p class="text-xs text-gray-500"
-                      x-text="dish.last_used
-                        ? S.lastCooked + ' ' + formatDate(dish.last_used)
-                        : S.neverCooked"
-                    ></p>
-                  </div>
-                  <!-- Action buttons inline -->
-                  <div class="dish-actions">
-                    <button
-                      class="btn btn-success text-xs"
-                      @click="acceptDish(dish)"
-                      :title="S.acceptTitle"
-                    >✓ <span x-text="S.accept"></span></button>
-                    <button
-                      class="btn btn-neutral text-xs"
-                      @click="rejectDish(dish, 'session')"
-                      :disabled="rejecting"
-                      :title="S.notTodayTitle"
-                    >↷ <span x-text="S.notToday"></span></button>
-                    <button
-                      class="btn btn-danger text-xs"
-                      @click="rejectDish(dish, 'temporary')"
-                      :disabled="rejecting"
-                      :title="S.blockTitle"
-                    >✕ <span x-text="S.block"></span></button>
-                  </div>
-                </div>
-              </template>
+                <div class="mt-1">
+                  <template x-if="loadingSuggestions">
+                    <p class="text-gray-500 text-sm py-2 text-center">⏳ <span x-text="S.loadingSuggestions"></span></p>
+                  </template>
+                  <template x-if="!loadingSuggestions">
+                    <div>
+                      <template x-for="dish in suggestions" :key="dish.id">
+                        <div class="suggestion-card">
+                          <!-- Dish info -->
+                          <div class="dish-info">
+                            <p class="font-semibold text-white text-sm leading-snug" x-text="dish.name"></p>
+                            <p class="text-xs text-gray-500"
+                              x-text="dish.last_used
+                                ? S.lastCooked + ' ' + formatDate(dish.last_used)
+                                : S.neverCooked"
+                            ></p>
+                          </div>
+                          <!-- Action buttons inline -->
+                          <div class="dish-actions">
+                            <button
+                              class="btn btn-success text-xs"
+                              @click="acceptDish(dish)"
+                              :title="S.acceptTitle"
+                            >✓ <span x-text="S.accept"></span></button>
+                            <button
+                              class="btn btn-neutral text-xs"
+                              @click="rejectDish(dish, 'session')"
+                              :disabled="rejecting"
+                              :title="S.notTodayTitle"
+                            >↷ <span x-text="S.notToday"></span></button>
+                            <button
+                              class="btn btn-danger text-xs"
+                              @click="rejectDish(dish, 'temporary')"
+                              :disabled="rejecting"
+                              :title="S.blockTitle"
+                            >✕ <span x-text="S.block"></span></button>
+                          </div>
+                        </div>
+                      </template>
 
-              <template x-if="suggestions.length === 0">
-                <p class="text-gray-500 italic text-sm py-2 text-center" x-text="S.noMoreSuggestions"></p>
-              </template>
-              </div>
-              </template>
-              </div>
-              </template>
-
-              <div class="divider" style="margin:0.5rem 0"></div>
-
-              <!-- Surprise me -->
-              <div class="flex gap-2 mb-2">
-                <button
-                  class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
-                  @click="surpriseMe('themealdb')"
-                  :disabled="surpriseLoading"
-                >
-                  <span x-show="!surpriseLoading">🎲 <span x-text="S.surpriseMe"></span></span>
-                  <span x-show="surpriseLoading">⏳</span>
-                </button>
-                <button
-                  class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
-                  @click="surpriseMe('chefkoch')"
-                  :disabled="surpriseLoading"
-                >
-                  <span x-show="!surpriseLoading">👨‍🍳 Chefkoch</span>
-                  <span x-show="surpriseLoading">⏳</span>
-                </button>
-              </div>
-
-              <!-- Surprise result -->
-              <template x-if="surpriseResult">
-                <div class="bg-violet-950 border border-violet-700 rounded-xl p-3 mb-3">
-                  <div class="flex items-center gap-3 mb-2.5">
-                    <img
-                      x-show="surpriseResult.thumb"
-                      :src="surpriseResult.thumb"
-                      class="w-12 h-12 rounded-lg object-cover shrink-0"
-                      alt=""
-                    />
-                    <div class="min-w-0">
-                      <p class="font-semibold text-white text-sm" x-text="surpriseResult.name"></p>
-                      <p class="text-xs text-gray-400" x-text="surpriseResult.category + (surpriseResult.area ? ' · ' + surpriseResult.area : '')"></p>
-                      <a
-                        x-show="surpriseResult.url"
-                        :href="surpriseResult.url"
-                        target="_blank"
-                        class="text-xs text-blue-400 hover:underline"
-                        x-text="S.viewRecipe"
-                      ></a>
+                      <template x-if="suggestions.length === 0">
+                        <p class="text-gray-500 italic text-sm py-2 text-center" x-text="S.noMoreSuggestions"></p>
+                      </template>
                     </div>
+                  </template>
+
+                  <div class="mt-2"></div>
+                  <!-- Surprise me -->
+                  <div class="flex gap-2 mb-2">
+                    <button
+                      class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
+                      @click="surpriseMe('themealdb')"
+                      :disabled="surpriseLoading"
+                    >
+                      <span x-show="!surpriseLoading">🎲 <span x-text="S.surpriseMe"></span></span>
+                      <span x-show="surpriseLoading">⏳</span>
+                    </button>
+                    <button
+                      class="btn btn-violet flex-1 flex items-center justify-center gap-1.5"
+                      @click="surpriseMe('chefkoch')"
+                      :disabled="surpriseLoading"
+                    >
+                      <span x-show="!surpriseLoading">👨‍🍳 Chefkoch</span>
+                      <span x-show="surpriseLoading">⏳</span>
+                    </button>
                   </div>
-                  <div class="flex gap-2">
-                    <button class="btn btn-success flex-1 text-sm" @click="acceptSurprise" x-text="S.accept + ' + ' + S.addToList"></button>
-                    <button class="btn btn-neutral text-sm" @click="surpriseMe(surpriseSource)">🎲</button>
-                    <button class="btn btn-danger text-sm" @click="surpriseResult = null">✕</button>
-                  </div>
+
+                  <!-- Surprise result -->
+                  <template x-if="surpriseResult">
+                    <div class="bg-violet-950 border border-violet-700 rounded-xl p-3 mb-3">
+                      <div class="flex items-center gap-3 mb-2.5">
+                        <img
+                          x-show="surpriseResult.thumb"
+                          :src="surpriseResult.thumb"
+                          class="w-12 h-12 rounded-lg object-cover shrink-0"
+                          alt=""
+                        />
+                        <div class="min-w-0">
+                          <p class="font-semibold text-white text-sm" x-text="surpriseResult.name"></p>
+                          <p class="text-xs text-gray-400" x-text="surpriseResult.category + (surpriseResult.area ? ' · ' + surpriseResult.area : '')"></p>
+                          <a
+                            x-show="surpriseResult.url"
+                            :href="surpriseResult.url"
+                            target="_blank"
+                            class="text-xs text-blue-400 hover:underline"
+                            x-text="S.viewRecipe"
+                          ></a>
+                        </div>
+                      </div>
+                      <div class="flex gap-2">
+                        <button class="btn btn-success flex-1 text-sm" @click="acceptSurprise" x-text="S.accept + ' + ' + S.addToList"></button>
+                        <button class="btn btn-neutral text-sm" @click="surpriseMe(surpriseSource)">🎲</button>
+                        <button class="btn btn-danger text-sm" @click="surpriseResult = null">✕</button>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </template>
 
@@ -1223,7 +1223,7 @@
       moveEmpty: 'frei',
 
       // Suggestions
-      suggestionsLabel: 'Vorschläge (am längsten nicht gekocht)',
+      suggestionsLabel: 'Vorschläge',
       loadingSuggestions: 'Vorschläge werden geladen…',
       noMoreSuggestions: 'Keine weiteren Vorschläge – bitte eigenen Eintrag nutzen.',
       lastCooked: 'Zuletzt:',
@@ -1355,7 +1355,7 @@
       moveEmpty: 'free',
 
       // Suggestions
-      suggestionsLabel: 'Suggestions (least recently cooked)',
+      suggestionsLabel: 'Suggestions',
       loadingSuggestions: 'Loading suggestions…',
       noMoreSuggestions: 'No more suggestions – please use the custom entry.',
       lastCooked: 'Last:',
