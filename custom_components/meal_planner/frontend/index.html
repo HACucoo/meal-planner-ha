@@ -403,6 +403,20 @@
     }
     .sort-btn:hover { color: var(--mp-text); }
 
+    /* Fold-out heading (suggestions) */
+    .section-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      width: 100%;
+      padding: 0.3rem 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+    }
+    .section-toggle:hover .section-label { color: var(--mp-text); }
+
     .divider {
       border-top: 1px solid var(--mp-border);
       margin: 1rem 0;
@@ -549,15 +563,16 @@
               <span class="text-xs text-gray-500 min-w-0 truncate" x-text="S.photoAppliesTo + ' ' + activeDayPhotoTarget().label"></span>
             </div>
           </template>
-          <div class="flex gap-2">
+          <!-- One row from tablet width up; on phones move/swap gets a row of its own -->
+          <div class="flex flex-wrap gap-2">
             <button class="btn btn-neutral flex-1" @click="startEdit()" x-text="S.change"></button>
+            <button
+              class="btn btn-neutral w-full sm:w-auto sm:flex-1 order-last sm:order-none"
+              @click="openMove()"
+              x-text="S.moveSwap"
+            ></button>
             <button class="btn btn-danger" @click="clearDay(activeDay.iso)" x-text="S.delete"></button>
           </div>
-          <button
-            class="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-300 underline"
-            @click="openMove()"
-            x-text="S.moveSwap"
-          ></button>
         </div>
       </template>
 
@@ -565,16 +580,8 @@
       <template x-if="!plan[activeDay?.iso] || editMode">
         <div>
 
-          <!-- Loading -->
-          <template x-if="loadingSuggestions">
-            <div class="text-center py-8 text-gray-500">
-              <div class="text-3xl mb-2">⏳</div>
-              <p x-text="S.loadingSuggestions"></p>
-            </div>
-          </template>
-
-          <template x-if="!loadingSuggestions">
-            <div>
+          <!-- Shown at once; suggestions load only when unfolded -->
+          <div>
 
               <!-- Custom entry + dish picker -->
               <p class="section-label" style="margin-bottom:0.25rem" x-text="S.ownEntry"></p>
@@ -650,9 +657,24 @@
 
               <div class="divider" style="margin:0.5rem 0"></div>
 
-              <!-- Suggestions -->
-              <p class="section-label" style="margin-bottom:0.25rem" x-text="S.suggestionsLabel"></p>
+              <!-- Suggestions: folded away by default, so the dialog stays calm -->
+              <button
+                type="button"
+                class="section-toggle"
+                @click="toggleSuggestions()"
+                :aria-expanded="showSuggestions"
+              >
+                <span class="text-gray-500 text-xs w-3" x-text="showSuggestions ? '▾' : '▸'"></span>
+                <span class="section-label" style="margin:0" x-text="S.suggestionsLabel"></span>
+              </button>
 
+              <template x-if="showSuggestions">
+              <div class="mt-1">
+              <template x-if="loadingSuggestions">
+                <p class="text-gray-500 text-sm py-2 text-center">⏳ <span x-text="S.loadingSuggestions"></span></p>
+              </template>
+              <template x-if="!loadingSuggestions">
+              <div>
               <template x-for="dish in suggestions" :key="dish.id">
                 <div class="suggestion-card">
                   <!-- Dish info -->
@@ -689,6 +711,10 @@
 
               <template x-if="suggestions.length === 0">
                 <p class="text-gray-500 italic text-sm py-2 text-center" x-text="S.noMoreSuggestions"></p>
+              </template>
+              </div>
+              </template>
+              </div>
               </template>
 
               <div class="divider" style="margin:0.5rem 0"></div>
@@ -743,8 +769,7 @@
                 </div>
               </template>
 
-            </div>
-          </template>
+          </div>
 
         </div>
       </template>
@@ -1488,6 +1513,8 @@
         editMode: false,
         suggestions: [],
         loadingSuggestions: false,
+        showSuggestions: false,   // folded by default, loaded on first unfold
+        suggestionsDay: null,     // day the loaded suggestions belong to
         rejecting: false,
 
         // Surprise
@@ -1691,11 +1718,10 @@
           this.addToList = false;
           this.surpriseResult = null;
           this.suggestions = [];
+          this.suggestionsDay = null;
+          this.showSuggestions = false;
           this.modalOpen = true;
           this.loadDishes();
-          if (!this.plan[day.iso]) {
-            await this.loadSuggestions();
-          }
         },
         closeModal() {
           this.modalOpen = false;
@@ -1717,8 +1743,15 @@
           this.editMode = true;
           this.customText = '';
           this.surpriseResult = null;
+          this.showSuggestions = false;
           this.loadDishes();
-          await this.loadSuggestions();
+        },
+        async toggleSuggestions() {
+          this.showSuggestions = !this.showSuggestions;
+          // Fetched once per day and dialog; skips and blocks keep the list current
+          if (this.showSuggestions && this.suggestionsDay !== this.activeDay?.iso) {
+            await this.loadSuggestions();
+          }
         },
 
         async loadSuggestions() {
@@ -1727,6 +1760,7 @@
           try {
             const resp = await fetch(`${API}/suggest/${this.activeDay.iso}`);
             this.suggestions = await resp.json();
+            this.suggestionsDay = this.activeDay.iso;
           } catch(e) {
             console.error('Failed to load suggestions', e);
             this.suggestions = [];

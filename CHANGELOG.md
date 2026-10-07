@@ -16,6 +16,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 - Upcoming meals card: the photo reaches full brightness at the right edge;
   only the text side is darkened.
+- **Suggestions in the day dialog are folded away** behind their heading and
+  load only when unfolded, so the dialog is calmer and opens at once instead
+  of waiting for them.
+- **Move / swap is a button** next to Change and Delete (on phones in a row of
+  its own) instead of a small text link.
 
 ## [1.8.0] - 2026-09-23
 
