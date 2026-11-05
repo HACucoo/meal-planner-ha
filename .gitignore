@@ -1,3 +1,5 @@
 # Development server data (dev/mock_server.py)
 dev/.mock-data/
 __pycache__/
+.vscode/
+.claude/

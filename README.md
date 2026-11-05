@@ -126,7 +126,7 @@ Go to your dashboard → ⋮ menu → **Edit dashboard** → **Manage resources*
 | URL | `/meal_planner_frontend/meal-planner-card.js` |
 | Resource type | JavaScript module |
 
-After an update, a browser or wall tablet may keep the old file cached. Adding a version to the URL, for example `/meal_planner_frontend/meal-planner-card.js?v=1.8.0`, makes it load the new one.
+After an update, a browser or wall tablet may keep the old file cached. Adding a version to the URL, for example `/meal_planner_frontend/meal-planner-card.js?v=1.9.0`, makes it load the new one.
 
 **2. Add a card**
 

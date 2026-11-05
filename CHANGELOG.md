@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-05
+
 ### Added
 - **Rename a dish in place** (✏️ in the dish list, or double-click the name).
   The dish keeps its id, photo, block and history, and every planned day that
@@ -214,6 +216,8 @@ Existing entity IDs are unchanged, so dashboards and automations keep working.
   random recipes, summary sensors, Lovelace list card, CSV history export and
   DE / EN localisation.
 
+[1.9.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.9.0
+[1.8.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.8.0
 [1.7.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.7.0
 [1.6.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.6.0
 [1.5.0]: https://github.com/HACucoo/meal-planner-ha/releases/tag/v1.5.0
